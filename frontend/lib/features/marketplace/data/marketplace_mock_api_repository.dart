@@ -9,6 +9,7 @@
 ///
 /// Operations that are purely local (quote calculation, price validation)
 /// are still handled in-process for responsiveness.
+library;
 
 import 'dart:convert';
 

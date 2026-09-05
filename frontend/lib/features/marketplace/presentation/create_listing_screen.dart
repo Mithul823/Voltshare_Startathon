@@ -140,9 +140,39 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
               ),
               if (state.hasError) ...[
                 const SizedBox(height: 12),
-                Text(
-                  'Could not publish listing. Check role and values.',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Theme.of(context).colorScheme.error,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          state.error
+                              .toString()
+                              .replaceAll('Exception: ', '')
+                              .replaceAll('MarketplaceException: ', ''),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
               const SizedBox(height: 18),
@@ -172,9 +202,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                         if (context.mounted && listing != null) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text(
-                                'Listing published for this session.',
-                              ),
+                              content: Text('Listing published successfully.'),
                             ),
                           );
                           context.go(AppRoutes.myListings);

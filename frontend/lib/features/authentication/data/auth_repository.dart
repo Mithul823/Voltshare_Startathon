@@ -52,6 +52,18 @@ final currentProfileProvider = FutureProvider<UserProfile?>((ref) async {
   final repository = ref.watch(authRepositoryProvider);
   final session = ref.watch(currentSessionProvider);
   if (session == null || !repository.isConfigured) {
+    if (ref.watch(appConfigProvider).isMockMode) {
+      return UserProfile(
+        id: 'producer-1',
+        email: 'ravi@voltshare-demo.local',
+        fullName: 'Ravi Kumar',
+        phone: '+91 9876543210',
+        role: UserRole.prosumer,
+        city: 'Kochi',
+        district: 'Ernakulam',
+        state: 'Kerala',
+      );
+    }
     return null;
   }
   return repository.fetchProfile(session.user.id);

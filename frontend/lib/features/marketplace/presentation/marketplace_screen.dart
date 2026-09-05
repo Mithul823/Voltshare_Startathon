@@ -19,6 +19,7 @@ class MarketplaceScreen extends ConsumerWidget {
     final listings = ref.watch(marketplaceListingsProvider);
     final query = ref.watch(marketplaceQueryProvider);
     ref.watch(webSocketProvider);
+    final permissions = ref.watch(marketplacePermissionsProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -34,20 +35,22 @@ class MarketplaceScreen extends ConsumerWidget {
                 showBackButton: false,
                 actions: [
                   const NotificationBell(),
-                  IconButton(
-                    tooltip: 'Create listing',
-                    onPressed: () => context.push(AppRoutes.createListing),
-                    icon: const Icon(Icons.add_circle_outline),
-                    style: IconButton.styleFrom(
-                      backgroundColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                  if (permissions.canSell) ...[
+                    IconButton(
+                      tooltip: 'Create listing',
+                      onPressed: () => context.push(AppRoutes.createListing),
+                      icon: const Icon(Icons.add_circle_outline),
+                      style: IconButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primaryContainer
+                            .withValues(alpha: 0.5),
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'My listings',
-                    onPressed: () => context.push(AppRoutes.myListings),
-                    icon: const Icon(Icons.list_alt_outlined),
-                  ),
-                  // Grid/List toggle icon - kept for future implementation
+                    IconButton(
+                      tooltip: 'My listings',
+                      onPressed: () => context.push(AppRoutes.myListings),
+                      icon: const Icon(Icons.list_alt_outlined),
+                    ),
+                  ],
                 ],
               ),
 
@@ -57,8 +60,8 @@ class MarketplaceScreen extends ConsumerWidget {
               MarketplaceSearchBar(
                 value: query.search,
                 onChanged: (value) {
-                  ref.read(marketplaceQueryProvider.notifier).state =
-                      query.copyWith(search: value);
+                  ref.read(marketplaceQueryProvider.notifier).state = query
+                      .copyWith(search: value);
                 },
               ),
 
@@ -72,8 +75,8 @@ class MarketplaceScreen extends ConsumerWidget {
                   next.contains(filter)
                       ? next.remove(filter)
                       : next.add(filter);
-                  ref.read(marketplaceQueryProvider.notifier).state =
-                      query.copyWith(filters: next);
+                  ref.read(marketplaceQueryProvider.notifier).state = query
+                      .copyWith(filters: next);
                 },
                 onClear: () {
                   ref.read(marketplaceQueryProvider.notifier).state =
@@ -87,14 +90,16 @@ class MarketplaceScreen extends ConsumerWidget {
               Row(
                 children: [
                   Expanded(
-                    child: listings.whenOrNull(
-                      data: (items) => Text(
-                        '${items.length} listing${items.length == 1 ? '' : 's'} found',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ) ?? const SizedBox.shrink(),
+                    child:
+                        listings.whenOrNull(
+                          data: (items) => Text(
+                            '${items.length} listing${items.length == 1 ? '' : 's'} found',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ) ??
+                        const SizedBox.shrink(),
                   ),
                   MarketplaceSortDropdown(
                     value: query.sort,
@@ -124,7 +129,8 @@ class MarketplaceScreen extends ConsumerWidget {
                 error: (error, _) => _EmptyState(
                   icon: Icons.cloud_off_outlined,
                   title: 'Marketplace unavailable',
-                  message: 'We could not load energy listings. Please check your connection.',
+                  message:
+                      'We could not load energy listings. Please check your connection.',
                   actionLabel: 'Retry',
                   onAction: () => ref.invalidate(marketplaceListingsProvider),
                 ),
@@ -133,23 +139,31 @@ class MarketplaceScreen extends ConsumerWidget {
                     return _EmptyState(
                       icon: Icons.search_off_rounded,
                       title: 'No listings found',
-                      message: query.search.isNotEmpty || query.filters.isNotEmpty
+                      message:
+                          query.search.isNotEmpty || query.filters.isNotEmpty
                           ? 'Try clearing filters or changing your search.'
                           : 'No energy listings available at the moment.',
-                      actionLabel: query.search.isNotEmpty || query.filters.isNotEmpty
+                      actionLabel:
+                          query.search.isNotEmpty || query.filters.isNotEmpty
                           ? 'Clear filters'
                           : null,
-                      onAction: query.search.isNotEmpty || query.filters.isNotEmpty
+                      onAction:
+                          query.search.isNotEmpty || query.filters.isNotEmpty
                           ? () {
-                              ref.read(marketplaceQueryProvider.notifier).state =
+                              ref
+                                      .read(marketplaceQueryProvider.notifier)
+                                      .state =
                                   const MarketplaceQuery();
                             }
                           : null,
                     );
                   }
-                  return _ListingGrid(items: items, onView: (id) {
-                    context.push('/marketplace/$id');
-                  });
+                  return _ListingGrid(
+                    items: items,
+                    onView: (id) {
+                      context.push('/marketplace/$id');
+                    },
+                  );
                 },
               ),
             ],
@@ -240,7 +254,9 @@ class _EmptyState extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                color: theme.colorScheme.primaryContainer.withValues(
+                  alpha: 0.3,
+                ),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 36, color: theme.colorScheme.primary),

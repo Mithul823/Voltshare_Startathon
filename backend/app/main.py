@@ -57,6 +57,10 @@ def create_app() -> FastAPI:
     add_exception_handlers(app)
     app.include_router(root_health_router)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    if settings.is_demo_mode:
+        from app.api.v1 import mock_listings, mock_purchases
+        app.include_router(mock_listings.router, prefix=settings.api_v1_prefix + "/mock/listings", tags=["mock"])
+        app.include_router(mock_purchases.router, prefix=settings.api_v1_prefix + "/mock/purchases", tags=["mock"])
     register_realtime_websockets(app)
 
     return app

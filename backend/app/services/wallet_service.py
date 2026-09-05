@@ -5,6 +5,8 @@ Data access is delegated to ``get_wallet_repository()`` which returns
 either an ``InMemoryWalletRepository`` or a ``SupabaseWalletRepository``.
 """
 
+from app.core.financial_transaction import atomic
+from app.core.config import get_settings
 from app.core.exceptions import ApiError, ErrorCode
 from app.core.security import AuthenticatedUser
 from app.repositories.wallet_repository import get_wallet_repository
@@ -118,6 +120,12 @@ class WalletService:
         return self.deposit(user, request)
 
     def deposit(self, user: AuthenticatedUser, request: WalletMutationRequest) -> WalletTransaction:
+        if not get_settings().is_demo_mode:
+            raise ApiError(403, ErrorCode.ACTION_BLOCKED, "Unverified deposits are only available in enabled demo mode.")
+        return self._demo_deposit(user, request)
+
+    @atomic
+    def _demo_deposit(self, user: AuthenticatedUser, request: WalletMutationRequest) -> WalletTransaction:
         if user.role not in {UserRole.consumer, UserRole.prosumer, UserRole.admin}:
             raise ApiError(403, ErrorCode.ACCESS_DENIED, "This role cannot deposit funds.")
         if request.amountPaise > self.maximum_top_up_paise:
@@ -159,6 +167,7 @@ class WalletService:
     def demo_withdraw(self, user: AuthenticatedUser, request: WalletMutationRequest) -> WalletTransaction:
         return self.withdraw(user, request)
 
+    @atomic
     def withdraw(self, user: AuthenticatedUser, request: WalletMutationRequest) -> WalletTransaction:
         if user.role not in {UserRole.producer, UserRole.prosumer, UserRole.admin}:
             raise ApiError(403, ErrorCode.ACCESS_DENIED, "Only producers and prosumers can withdraw demo earnings.")
@@ -200,6 +209,7 @@ class WalletService:
             user_id=user.user_id, payload=self._repo.load_wallet(user.user_id).model_dump(mode="json"))
         return transaction
 
+    @atomic
     def escrow_hold(self, *, buyer_id: str, seller_id: str, purchase_id: str, escrow_id: str, amount_paise: int, platform_fee_paise: int, quantity_kwh: float, unit_price_paise: int, listing_id: str) -> WalletTransaction:
         wallet = self._repo.load_wallet(buyer_id)
         self._ensure_active(wallet)
@@ -228,6 +238,7 @@ class WalletService:
             escrowStatusLabel="Funds held in escrow",
         ))
 
+    @atomic
     def release_escrow(self, *, buyer_id: str, seller_id: str, escrow_id: str, purchase_id: str, seller_release_paise: int, buyer_refund_paise: int, platform_fee_paise: int) -> None:
         buyer_wallet = self._repo.load_wallet(buyer_id)
         held_delta = seller_release_paise + buyer_refund_paise + platform_fee_paise
@@ -246,7 +257,7 @@ class WalletService:
                     "escrowStatusLabel": "Refunded" if buyer_refund_paise and not seller_release_paise else "Released",
                 })
             updated_txs.append(item)
-        # Note: updating individual transactions in-memory — full list management
+        self._repo.replace_transactions(buyer_id, updated_txs)
         if seller_release_paise:
             seller_wallet = self._repo.load_wallet(seller_id)
             self._repo.update_balance(seller_id,
@@ -287,8 +298,11 @@ class WalletService:
         event_publisher.publish("wallet.updated", channels=[RealtimeChannel.wallet, RealtimeChannel.dashboard],
             user_id=seller_id, payload=self._repo.load_wallet(seller_id).model_dump(mode="json"))
 
+    @atomic
     def refund(self, user: AuthenticatedUser, request: RefundRequest) -> WalletTransaction:
         original = self.transaction(user.user_id, request.transactionId)
+        if original.escrowId:
+            raise ApiError(409, ErrorCode.ACTION_BLOCKED, "Escrow purchases must be refunded through escrow resolution.")
         if original.type != WalletTransactionType.energyPurchase or original.status != WalletTransactionStatus.completed:
             raise ApiError(409, ErrorCode.VALIDATION_FAILED, "This transaction is not eligible for refund.")
         if any(tx.refundedTransactionId == original.id for tx in self._repo.transactions(user.user_id)):

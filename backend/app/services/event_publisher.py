@@ -37,6 +37,12 @@ class EventPublisher:
             actorUserId=actor_user_id,
             payload=payload or {},
         )
+        from app.core.financial_transaction import defer
+        if defer(lambda: self.publish(event_type, channels=channels, payload=payload,
+            actor_user_id=actor_user_id, user_id=user_id, notification_title=notification_title,
+            notification_message=notification_message, notification_category=notification_category,
+            notification_priority=notification_priority, action_url=action_url)):
+            return event
         state.realtime_events.append(event)
         if user_id and notification_title and notification_message and notification_category:
             notification = notification_service.create(

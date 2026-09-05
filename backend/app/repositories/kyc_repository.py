@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from threading import RLock
 from typing import Optional
 
+from app.core.financial_transaction import transaction
 from app.core.config import get_settings
 from app.core.exceptions import ApiError, ErrorCode
 from app.repositories.state import state
@@ -16,10 +17,18 @@ class KycRepository:
 
     def __init__(self) -> None:
         self._lock = RLock()
-        self._records: dict[str, KycRecord] = {}
+        self._memory_records: dict[str, KycRecord] = {}
+
+    @property
+    def _records(self):
+        settings = get_settings()
+        if settings.financial_database_url or settings.is_production or (settings.supabase_url and settings.supabase_service_role_key):
+            from app.repositories.financial_store import RecordMap
+            return RecordMap("kyc", KycRecord)
+        return self._memory_records
 
     async def submit_kyc(self, user_id: str, user_role: str, submission: KycSubmission) -> KycRecord:
-        with self._lock:
+        with transaction(), self._lock:
             existing = self._get_by_user_id(user_id)
             if existing and existing.status in {KycStatus.pending, KycStatus.verified}:
                 raise ApiError(409, ErrorCode.VALIDATION_FAILED, "KYC is already submitted or verified.")
@@ -54,7 +63,7 @@ class KycRepository:
         return self._get_by_user_id(user_id)
 
     async def review_kyc(self, kyc_id: str, status: KycStatus, remarks: Optional[str], reviewed_by: str) -> KycRecord:
-        with self._lock:
+        with transaction(), self._lock:
             record = self._records.get(kyc_id)
             if not record:
                 raise ApiError(404, ErrorCode.RESOURCE_NOT_FOUND, "KYC record not found.")
@@ -104,10 +113,8 @@ class KycRepository:
         )
 
     def _get_by_user_id(self, user_id: str) -> Optional[KycRecord]:
-        for record in self._records.values():
-            if record.user_id == user_id:
-                return record
-        return None
+        records = [record for record in self._records.values() if record.user_id == user_id]
+        return max(records, key=lambda record: (record.submitted_at or datetime.min.replace(tzinfo=timezone.utc), record.id), default=None)
 
     def _to_response(self, record: KycRecord) -> KycRecordResponse:
         return KycRecordResponse(

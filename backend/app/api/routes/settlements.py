@@ -16,7 +16,7 @@ router = APIRouter()
 def process_settlement(
     escrowId: str,
     response: Response,
-    deliveredEnergyKwh: float = 0,
+    deliveredEnergyKwh: float,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> EscrowSettlementResult:

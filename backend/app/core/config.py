@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
 
+    financial_database_url: str = ""
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
@@ -62,6 +63,8 @@ class Settings(BaseSettings):
         if not self.hmac_secret and self.is_production:
             missing.append("HMAC_SECRET")
         if self.is_production:
+            if not self.financial_database_url.startswith(("postgresql://", "postgres://")):
+                missing.append("FINANCIAL_DATABASE_URL (PostgreSQL)")
             for key, value in {
                 "SUPABASE_URL": self.supabase_url,
                 "SUPABASE_ANON_KEY": self.supabase_anon_key,

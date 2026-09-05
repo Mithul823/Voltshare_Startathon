@@ -106,13 +106,17 @@ class InMemoryEnergyReadingsRepository:
 
 
 def _row_to_reading(row: dict[str, Any]) -> EnergyReading:
+    solar = float(row.get("solar_generation_kwh") if row.get("solar_generation_kwh") is not None else row.get("solar_power_kw", 0))
+    consumption = float(row.get("consumption_kwh") if row.get("consumption_kwh") is not None else row.get("consumption_kw", 0))
+    battery = int(row.get("battery_percent") if row.get("battery_percent") is not None else row.get("battery_percentage", 50))
+    ts = _parse_dt(row.get("timestamp") or row.get("recorded_at"))
     return EnergyReading(
         id=str(row["id"]),
         user_id=str(row["user_id"]),
-        timestamp=_parse_dt(row.get("timestamp")),
-        solar_generation_kwh=float(row.get("solar_generation_kwh", 0)),
-        consumption_kwh=float(row.get("consumption_kwh", 0)),
-        battery_percent=int(row.get("battery_percent", 50)),
+        timestamp=ts,
+        solar_generation_kwh=solar,
+        consumption_kwh=consumption,
+        battery_percent=battery,
         battery_charge_kw=float(row.get("battery_charge_kw", 0)),
         grid_import_kwh=float(row.get("grid_import_kwh", 0)),
         grid_export_kwh=float(row.get("grid_export_kwh", 0)),
@@ -127,6 +131,10 @@ def _reading_to_row(reading: EnergyReading) -> dict[str, Any]:
         "id": reading.id,
         "user_id": reading.user_id,
         "timestamp": reading.timestamp.isoformat(),
+        "recorded_at": reading.timestamp.isoformat(),
+        "solar_power_kw": reading.solar_generation_kwh,
+        "consumption_kw": reading.consumption_kwh,
+        "battery_percentage": reading.battery_percent,
         "solar_generation_kwh": reading.solar_generation_kwh,
         "consumption_kwh": reading.consumption_kwh,
         "battery_percent": reading.battery_percent,

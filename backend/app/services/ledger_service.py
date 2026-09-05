@@ -1,10 +1,12 @@
+from app.core.financial_transaction import atomic
 from app.core.exceptions import ApiError, ErrorCode
-from app.repositories.state import state
+from app.repositories.financial_store import financial_state as state
 from app.schemas.common import new_id, now_utc
 from app.schemas.wallet import LedgerEntry, LedgerTransaction
 
 
 class LedgerService:
+    @atomic
     def record(
         self,
         *,

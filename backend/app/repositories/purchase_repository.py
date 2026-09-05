@@ -1,10 +1,4 @@
-"""Purchase repository — in-memory (demo) and Supabase (live) implementations.
-
-The Supabase implementation delegates purchase persistence to the existing
-``create_energy_purchase_order`` RPC for atomicity.  Read operations use
-the in-memory cache until a full Supabase purchase-orders repository is
-implemented.
-"""
+"""Purchase records in demo memory or the shared financial database."""
 
 from __future__ import annotations
 
@@ -79,42 +73,11 @@ class InMemoryPurchaseRepository:
 # Supabase-backed repository (live mode)
 # ---------------------------------------------------------------------------
 
-class SupabasePurchaseRepository:
-    """Supabase PostgreSQL-backed purchase repository.
-
-    Uses the ``create_energy_purchase_order`` RPC for atomic purchase
-    creation.  Read operations use the in-memory cache until a full
-    purchase-orders repository is implemented.
-    """
-
+class SupabasePurchaseRepository(InMemoryPurchaseRepository):
+    """Persistent financial records in the shared PostgreSQL database."""
     def __init__(self, settings: Settings | None = None) -> None:
-        current = settings or get_settings()
-        self._client = get_supabase_admin_client(current)
-        self._in_memory = InMemoryPurchaseRepository()
-
-    def _require_client(self) -> None:
-        if self._client is None:
-            raise ApiError(503, ErrorCode.DATABASE_ERROR, "Supabase is not configured for live purchases.")
-
-    def save(self, purchase: EnergyPurchase) -> EnergyPurchase:
-        self._require_client()
-        self._in_memory.save(purchase)
-        return purchase
-
-    def get(self, purchase_id: str) -> EnergyPurchase | None:
-        return self._in_memory.get(purchase_id)
-
-    def list_for_user(self, user_id: str, relation: str | None = None) -> list[EnergyPurchase]:
-        return self._in_memory.list_for_user(user_id, relation)
-
-    def list_all(self) -> list[EnergyPurchase]:
-        return self._in_memory.list_all()
-
-    def update(self, purchase_id: str, **patch: Any) -> EnergyPurchase:
-        return self._in_memory.update(purchase_id, **patch)
-
-    def get_by_listing(self, listing_id: str) -> list[EnergyPurchase]:
-        return self._in_memory.get_by_listing(listing_id)
+        from app.repositories.financial_store import financial_state
+        self._state = financial_state
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +87,6 @@ class SupabasePurchaseRepository:
 def get_purchase_repository(settings: Settings | None = None) -> PurchaseRepository:
     """Return the active purchase repository based on configuration."""
     current = settings or get_settings()
-    if current.supabase_url and current.supabase_service_role_key:
+    if current.financial_database_url or current.is_production or (current.supabase_url and current.supabase_service_role_key):
         return SupabasePurchaseRepository(current)
     return InMemoryPurchaseRepository()

@@ -42,6 +42,7 @@ class WalletRepository(Protocol):
     def update_balance(self, user_id: str, **patch: Any) -> Wallet: ...
     def transactions(self, user_id: str) -> list[WalletTransaction]: ...
     def add_transaction(self, user_id: str, tx: WalletTransaction) -> WalletTransaction: ...
+    def replace_transactions(self, user_id: str, transactions: list[WalletTransaction]) -> None: ...
     def get_deposit(self, deposit_id: str) -> Deposit | None: ...
     def save_deposit(self, deposit: Deposit) -> Deposit: ...
     def get_withdrawal(self, withdrawal_id: str) -> Withdrawal | None: ...
@@ -110,6 +111,9 @@ class InMemoryWalletRepository:
     def add_transaction(self, user_id: str, tx: WalletTransaction) -> WalletTransaction:
         self._state.transactions.setdefault(user_id, []).insert(0, tx)
         return tx
+
+    def replace_transactions(self, user_id: str, transactions: list[WalletTransaction]) -> None:
+        self._state.transactions[user_id] = transactions
 
     def get_deposit(self, deposit_id: str) -> Deposit | None:
         return self._state.deposits.get(deposit_id)
@@ -200,108 +204,52 @@ def _parse_dt(value: Any) -> datetime:
     return now_utc()
 
 
-class SupabaseWalletRepository:
+class SupabaseWalletRepository(InMemoryWalletRepository):
     """Supabase PostgreSQL-backed wallet repository."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        current = settings or get_settings()
-        self._client = get_supabase_admin_client(current)
-        self._in_memory = InMemoryWalletRepository()  # fallback cache for tx history
-
-    def _require_client(self) -> None:
-        if self._client is None:
-            raise ApiError(503, ErrorCode.DATABASE_ERROR, "Supabase is not configured for live wallet.")
+        from app.repositories.financial_store import financial_state
+        self._state = financial_state
 
     def load_wallet(self, user_id: str) -> Wallet:
-        self._require_client()
-        result = self._client.table("wallets").select("*").eq("user_id", user_id).limit(1).execute()
-        if result.data:
-            return _row_to_wallet(result.data[0])
-        # No wallet exists yet — create one
-        return self.create_if_missing(user_id)
+        from app.repositories.financial_store import connection
+        from psycopg.rows import dict_row
+        with connection() as conn:
+            row = conn.cursor(row_factory=dict_row).execute("SELECT * FROM wallets WHERE user_id=%s FOR UPDATE", (user_id,)).fetchone()
+            return _row_to_wallet(row) if row else self.create_if_missing(user_id)
 
     def create_if_missing(self, user_id: str) -> Wallet:
-        self._require_client()
-        row = {
-            "user_id": user_id,
-            "available_balance": 0,
-            "held_balance": 0,
-            "currency": "INR",
-            "status": "ACTIVE",
-        }
-        result = self._client.table("wallets").insert(row).execute()
-        if not result.data:
-            raise ApiError(500, ErrorCode.DATABASE_ERROR, "Failed to create wallet.")
-        return _row_to_wallet(result.data[0])
-
-    # Columns that exist in the Supabase `wallets` table
-    _ALLOWED_WALLET_COLUMNS = {"available_balance", "held_balance", "status", "currency"}
+        from app.repositories.financial_store import connection
+        from psycopg.rows import dict_row
+        with connection() as conn:
+            conn.execute("INSERT INTO wallets(user_id,available_balance,held_balance,currency,status) VALUES (%s,0,0,'INR','ACTIVE') ON CONFLICT(user_id) DO NOTHING", (user_id,))
+            row = conn.cursor(row_factory=dict_row).execute("SELECT * FROM wallets WHERE user_id=%s FOR UPDATE", (user_id,)).fetchone()
+            return _row_to_wallet(row)
 
     def update_balance(self, user_id: str, **patch: Any) -> Wallet:
-        self._require_client()
-        db_patch: dict[str, Any] = {"updated_at": now_utc().isoformat()}
-        for key, value in patch.items():
-            db_key = _WALLET_REVERSE.get(key, key)
-            if db_key in self._ALLOWED_WALLET_COLUMNS:
-                db_patch[db_key] = value
-            # Fields that don't map to DB columns (totalSpentPaise, etc.)
-            # are silently ignored in Supabase mode. They exist on the Pydantic
-            # model but aren't persisted to the wallets table.
-        result = self._client.table("wallets").update(db_patch).eq("user_id", user_id).execute()
-        if not result.data:
-            raise ApiError(404, ErrorCode.RESOURCE_NOT_FOUND, "Wallet not found for balance update.")
-        return _row_to_wallet(result.data[0])
+        from app.repositories.financial_store import connection
+        from psycopg import sql
+        from psycopg.rows import dict_row
+        allowed = {"availableBalancePaise": "available_balance", "heldBalancePaise": "held_balance", "status": "status", "currency": "currency"}
+        values = {allowed[k]: v for k, v in patch.items() if k in allowed}
+        if any(values.get(k, 0) < 0 for k in ("available_balance", "held_balance")):
+            raise ApiError(409, ErrorCode.INSUFFICIENT_BALANCE, "Balance cannot be negative.")
+        values["updated_at"] = now_utc()
+        with connection() as conn:
+            query = sql.SQL("UPDATE wallets SET {} WHERE user_id=%s RETURNING *").format(sql.SQL(",").join(sql.SQL("{}=%s").format(sql.Identifier(k)) for k in values))
+            row = conn.cursor(row_factory=dict_row).execute(query, [*values.values(), user_id]).fetchone()
+            if not row:
+                raise ApiError(404, ErrorCode.RESOURCE_NOT_FOUND, "Wallet not found.")
+            return _row_to_wallet(row)
 
     def transactions(self, user_id: str) -> list[WalletTransaction]:
-        # Use in-memory for now; dedicate Supabase table in later pass
-        return self._in_memory.transactions(user_id)
+        return self._state.transactions.get(user_id, [])
 
     def add_transaction(self, user_id: str, tx: WalletTransaction) -> WalletTransaction:
-        return self._in_memory.add_transaction(user_id, tx)
-
-    def get_deposit(self, deposit_id: str) -> Deposit | None:
-        return self._in_memory.get_deposit(deposit_id)
-
-    def save_deposit(self, deposit: Deposit) -> Deposit:
-        return self._in_memory.save_deposit(deposit)
-
-    def get_withdrawal(self, withdrawal_id: str) -> Withdrawal | None:
-        return self._in_memory.get_withdrawal(withdrawal_id)
-
-    def save_withdrawal(self, withdrawal: Withdrawal) -> Withdrawal:
-        return self._in_memory.save_withdrawal(withdrawal)
-
-    def get_refund(self, refund_id: str) -> Refund | None:
-        return self._in_memory.get_refund(refund_id)
-
-    def save_refund(self, refund: Refund) -> Refund:
-        return self._in_memory.save_refund(refund)
-
-    def get_settlement(self, settlement_id: str) -> Settlement | None:
-        return self._in_memory.get_settlement(settlement_id)
-
-    def save_settlement(self, settlement: Settlement) -> Settlement:
-        return self._in_memory.save_settlement(settlement)
-
-    def save_ledger_entry(self, entry: LedgerEntry) -> LedgerEntry:
-        self._require_client()
-        row = {
-            "entry_id": entry.entryId,
-            "transaction_id": entry.transactionId,
-            "user_id": entry.userId,
-            "wallet_id": entry.walletId,
-            "account_type": entry.accountType,
-            "debit": entry.debitPaise,
-            "credit": entry.creditPaise,
-            "description": entry.description,
-        }
-        result = self._client.table("ledger_entries").insert(row).execute()
-        if not result.data:
-            raise ApiError(500, ErrorCode.DATABASE_ERROR, "Failed to record ledger entry.")
-        return entry
-
-    def record_audit(self, audit: TransactionAudit) -> None:
-        self._in_memory.record_audit(audit)
+        items = self.transactions(user_id)
+        items.insert(0, tx)
+        self._state.transactions[user_id] = items
+        return tx
 
 
 _WALLET_REVERSE = {v: k for k, v in _WALLET_COLUMNS.items() if v is not None}
@@ -314,6 +262,6 @@ _WALLET_REVERSE = {v: k for k, v in _WALLET_COLUMNS.items() if v is not None}
 def get_wallet_repository(settings: Settings | None = None) -> WalletRepository:
     """Return the active wallet repository based on configuration."""
     current = settings or get_settings()
-    if current.supabase_url and current.supabase_service_role_key:
+    if current.financial_database_url or current.is_production or (current.supabase_url and current.supabase_service_role_key):
         return SupabaseWalletRepository(current)
     return InMemoryWalletRepository()

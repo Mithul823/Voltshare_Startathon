@@ -10,10 +10,12 @@ class AppConfig {
     required this.supabasePublishableKey,
     this.apiBaseUrl = 'http://10.0.2.2:8000/api/v1',
     this.useMockBackend = false,
+    this.eventServerUrl = '',
   });
 
   factory AppConfig.fromEnvironment() {
     return const AppConfig(
+      eventServerUrl: String.fromEnvironment('EVENT_SERVER_URL'),
       supabaseUrl: String.fromEnvironment('SUPABASE_URL'),
       supabasePublishableKey: String.fromEnvironment(
         'SUPABASE_PUBLISHABLE_KEY',
@@ -33,6 +35,7 @@ class AppConfig {
   final String supabasePublishableKey;
   final String apiBaseUrl;
   final bool useMockBackend;
+  final String eventServerUrl;
 
   bool get isSupabaseConfigured {
     return supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;

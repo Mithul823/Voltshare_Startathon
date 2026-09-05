@@ -77,12 +77,14 @@ def test_purchase_moves_buyer_funds_to_escrow_then_settlement_credits_seller(cli
 
     settlement = client.post(
         "/api/v1/settlements/process",
-        headers={**auth_headers("phase64-seller"), "Idempotency-Key": "phase64-settle-1"},
-        params={"escrowId": escrow_id},
+        headers={**auth_headers("phase64-buyer"), "Idempotency-Key": "phase64-settle-1"},
+        params={"escrowId": escrow_id, "deliveredEnergyKwh": 1.0},
     )
 
     assert settlement.status_code == 200
     assert settlement.json()["sellerReleasePaise"] > 0
+    history = client.get("/api/v1/wallet/transactions", headers=headers).json()
+    assert next(tx for tx in history if tx["escrowId"] == escrow_id)["status"] == "completed"
     seller_wallet = client.get("/api/v1/wallet", headers=auth_headers("phase64-seller")).json()
     assert seller_wallet["availableBalancePaise"] > 125000
     assert client.get("/api/v1/settlements", headers=auth_headers("phase64-seller")).json()
@@ -118,3 +120,56 @@ def test_ledger_and_refund_endpoints_are_permissioned(client: TestClient) -> Non
     assert ledger.status_code == 200
     assert ledger.json()
     assert refunds.status_code == 200
+
+
+def test_seller_cannot_release_own_escrow(client):
+    seed_profile("release-buyer", UserRole.consumer)
+    seed_profile("release-seller", UserRole.producer)
+    _listing("release-listing", "release-seller", quantity=3.0, price=8.0)
+    purchase = client.post("/api/v1/purchases", headers={**auth_headers("release-buyer"), "Idempotency-Key": "release-buy"}, json={"listingId": "release-listing", "quantityKwh": 1.0}).json()
+    escrow_id = purchase["escrowId"]
+    for index, path in enumerate(("/api/v1/escrow/release", f"/api/v1/escrows/{escrow_id}/verify-delivery", "/api/v1/settlements/process")):
+        response = client.post(path, headers={**auth_headers("release-seller"), "Idempotency-Key": f"seller-release-{index}"}, params={"escrowId": escrow_id, "deliveredEnergyKwh": 1.0}, json={"deliveredEnergyKwh": 1.0})
+        assert response.status_code == 403
+    assert state.escrows[escrow_id].completedAt is None
+
+
+def test_cancel_returns_entire_hold_including_fee(client):
+    seed_profile("fee-buyer", UserRole.consumer)
+    _listing("fee-listing", "fee-seller", quantity=3.0, price=8.0)
+    headers = auth_headers("fee-buyer")
+    before = client.get("/api/v1/wallet/balance", headers=headers).json()
+    purchase = client.post("/api/v1/purchases", headers={**headers, "Idempotency-Key": "fee-buy"}, json={"listingId": "fee-listing", "quantityKwh": 1}).json()
+    response = client.post("/api/v1/escrow/cancel", params={"escrowId": purchase["escrowId"]}, headers={**headers, "Idempotency-Key": "fee-cancel"})
+    assert response.status_code == 200
+    assert response.json()["buyerRefundPaise"] == 840
+    after = client.get("/api/v1/wallet/balance", headers=headers).json()
+    assert after == before
+    history = client.get("/api/v1/wallet/transactions", headers=headers).json()
+    original = next(tx for tx in history if tx["type"] == "energyPurchase")
+    assert original["status"] == "refunded"
+
+
+def test_partial_settlement_conserves_money_and_cannot_repeat(client):
+    seed_profile("partial-buyer")
+    _listing("partial-listing", "partial-seller", quantity=3, price=8)
+    headers = auth_headers("partial-buyer")
+    purchase = client.post("/api/v1/purchases", headers={**headers, "Idempotency-Key": "partial-buy"}, json={"listingId": "partial-listing", "quantityKwh": 1}).json()
+    endpoint = f"/api/v1/escrows/{purchase['escrowId']}/verify-delivery"
+    response = client.post(endpoint, headers={**headers, "Idempotency-Key": "partial-settle"}, json={"deliveredEnergyKwh": 0.5})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["sellerReleasePaise"] + result["buyerRefundPaise"] + result["platformFeeRetainedPaise"] == 840
+    assert client.get("/api/v1/wallet/balance", headers=headers).json()["heldBalancePaise"] == 0
+    assert client.post(endpoint, headers={**headers, "Idempotency-Key": "partial-repeat"}, json={"deliveredEnergyKwh": 0.5}).status_code == 409
+
+
+def test_failed_meter_verification_freezes_without_releasing(client):
+    seed_profile("meter-buyer")
+    _listing("meter-listing", "meter-seller", quantity=3, price=8)
+    headers = auth_headers("meter-buyer")
+    purchase = client.post("/api/v1/purchases", headers={**headers, "Idempotency-Key": "meter-buy"}, json={"listingId": "meter-listing", "quantityKwh": 1}).json()
+    response = client.post(f"/api/v1/escrows/{purchase['escrowId']}/verify-delivery", headers={**headers, "Idempotency-Key": "meter-settle"}, json={"deliveredEnergyKwh": 1, "meterMatched": False})
+    assert response.status_code == 200
+    assert response.json()["frozenPaise"] == 840
+    assert client.get("/api/v1/wallet/balance", headers=headers).json()["heldBalancePaise"] == 840

@@ -13,6 +13,7 @@ from math import ceil
 from threading import RLock
 from typing import Any
 
+from app.core.financial_transaction import atomic
 from app.core.exceptions import ApiError, ErrorCode
 from app.core.security import AuthenticatedUser
 from app.repositories.marketplace_repository import get_marketplace_repository
@@ -124,7 +125,10 @@ class MarketplaceService:
 
     # -- mutations ---------------------------------------------------------
 
+    @atomic
     def create(self, user: AuthenticatedUser, request: ListingCreateRequest) -> EnergyListing:
+        from app.services.kyc_service import kyc_service
+        kyc_service.ensure_can_trade(user, selling=True)
         if user.role not in {"producer", "prosumer", "admin"}:
             raise ApiError(403, ErrorCode.MARKETPLACE_ROLE_NOT_ALLOWED, "Only producers and prosumers can create listings.")
         listing = EnergyListing(
@@ -170,7 +174,10 @@ class MarketplaceService:
         )
         return created
 
+    @atomic
     def update(self, user: AuthenticatedUser, listing_id: str, request: ListingUpdateRequest) -> EnergyListing:
+        from app.services.kyc_service import kyc_service
+        kyc_service.ensure_can_trade(user, selling=True)
         listing = self._repo.get(listing_id)
         if user.role != "admin" and listing.sellerId != user.user_id:
             raise ApiError(403, ErrorCode.ACCESS_DENIED, "Only the listing owner can update it.")
@@ -201,6 +208,7 @@ class MarketplaceService:
         )
         return updated
 
+    @atomic
     def cancel(self, user: AuthenticatedUser, listing_id: str) -> EnergyListing:
         listing = self._repo.get(listing_id)
         if user.role != "admin" and listing.sellerId != user.user_id:
@@ -225,7 +233,10 @@ class MarketplaceService:
         )
         return updated
 
+    @atomic
     def publish(self, user: AuthenticatedUser, listing_id: str) -> EnergyListing:
+        from app.services.kyc_service import kyc_service
+        kyc_service.ensure_can_trade(user, selling=True)
         return self._moderate(user, listing_id, ListingStatus.active, {"producer", "prosumer", "admin"}, "listing_published")
 
     def suspend(self, user: AuthenticatedUser, listing_id: str) -> EnergyListing:
@@ -234,7 +245,10 @@ class MarketplaceService:
     def reactivate(self, user: AuthenticatedUser, listing_id: str) -> EnergyListing:
         return self._moderate(user, listing_id, ListingStatus.active, {"admin"}, "listing_reactivated")
 
+    @atomic
     def duplicate(self, user: AuthenticatedUser, listing_id: str) -> EnergyListing:
+        from app.services.kyc_service import kyc_service
+        kyc_service.ensure_can_trade(user, selling=True)
         listing = self._repo.get(listing_id)
         if user.role != "admin" and listing.sellerId != user.user_id:
             raise ApiError(403, ErrorCode.ACCESS_DENIED, "Only the listing owner can duplicate it.")
@@ -248,11 +262,13 @@ class MarketplaceService:
         # create() only persists — events are the service's responsibility
         return self._repo.create(copy)
 
+    @atomic
     def reserve_quantity(self, listing_id: str, quantity_kwh: float) -> EnergyListing:
         return self._repo.reserve_quantity(listing_id, quantity_kwh)
 
     # -- internals ---------------------------------------------------------
 
+    @atomic
     def _moderate(self, user: AuthenticatedUser, listing_id: str, status: ListingStatus, roles: set[str], action: str) -> EnergyListing:
         listing = self._repo.get(listing_id)
         if user.role not in roles and listing.sellerId != user.user_id:

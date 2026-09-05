@@ -92,6 +92,9 @@ class InMemoryEscrowRepository:
         escrow = self.get(escrow_id)
         patch["version"] = escrow.version + 1
         updated = escrow.model_copy(update=patch)
+        from app.services.audit_service import canonical_hmac
+        unsigned = updated.model_copy(update={"integrityHash": ""})
+        updated = unsigned.model_copy(update={"integrityHash": canonical_hmac(unsigned.model_dump(mode="json"))})
         self._state.escrows[escrow_id] = updated
         return updated
 
@@ -125,68 +128,11 @@ class InMemoryEscrowRepository:
 # Supabase-backed repository (live mode)
 # ---------------------------------------------------------------------------
 
-class SupabaseEscrowRepository:
-    """Supabase PostgreSQL-backed escrow repository."""
-
+class SupabaseEscrowRepository(InMemoryEscrowRepository):
+    """Persistent financial records in the shared PostgreSQL database."""
     def __init__(self, settings: Settings | None = None) -> None:
-        current = settings or get_settings()
-        self._client = get_supabase_admin_client(current)
-        self._in_memory = InMemoryEscrowRepository()
-
-    def _require_client(self) -> None:
-        if self._client is None:
-            raise ApiError(503, ErrorCode.DATABASE_ERROR, "Supabase is not configured for live escrow.")
-
-    def create_for_purchase(self, *, purchase_id: str, listing_id: str, buyer_id: str, seller_id: str, quantity_kwh: float, amount_held_paise: int, platform_fee_paise: int) -> EscrowAgreement:
-        # Use the in-memory repo for creation; persist to Supabase via ledger
-        return self._in_memory.create_for_purchase(
-            purchase_id=purchase_id,
-            listing_id=listing_id,
-            buyer_id=buyer_id,
-            seller_id=seller_id,
-            quantity_kwh=quantity_kwh,
-            amount_held_paise=amount_held_paise,
-            platform_fee_paise=platform_fee_paise,
-        )
-
-    def get(self, escrow_id: str) -> EscrowAgreement:
-        return self._in_memory.get(escrow_id)
-
-    def update(self, escrow_id: str, **patch: Any) -> EscrowAgreement:
-        return self._in_memory.update(escrow_id, **patch)
-
-    def list_for(self, user_id: str) -> list[EscrowAgreement]:
-        return self._in_memory.list_for(user_id)
-
-    def save_escrow_account(self, account: EscrowAccount) -> EscrowAccount:
-        return self._in_memory.save_escrow_account(account)
-
-    def save_settlement(self, settlement: Settlement) -> Settlement:
-        self._require_client()
-        row = {
-            "settlement_id": settlement.settlementId,
-            "escrow_id": settlement.escrowId,
-            "purchase_id": settlement.purchaseId,
-            "seller_id": settlement.sellerId,
-            "amount": settlement.amountPaise,
-            "platform_fee": settlement.platformFeePaise,
-            "status": settlement.status,
-        }
-        result = self._client.table("settlements").insert(row).execute()
-        if not result.data:
-            raise ApiError(500, ErrorCode.DATABASE_ERROR, "Failed to save settlement.")
-        self._in_memory.save_settlement(settlement)
-        return settlement
-
-    def save_dispute(self, dispute: Dispute) -> Dispute:
-        self._in_memory.save_dispute(dispute)
-        return dispute
-
-    def get_disputes(self) -> list[Dispute]:
-        return self._in_memory.get_disputes()
-
-    def reconcile(self) -> ReconciliationReport:
-        return self._in_memory.reconcile()
+        from app.repositories.financial_store import financial_state
+        self._state = financial_state
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +142,6 @@ class SupabaseEscrowRepository:
 def get_escrow_repository(settings: Settings | None = None) -> EscrowRepository:
     """Return the active escrow repository based on configuration."""
     current = settings or get_settings()
-    if current.supabase_url and current.supabase_service_role_key:
+    if current.financial_database_url or current.is_production or (current.supabase_url and current.supabase_service_role_key):
         return SupabaseEscrowRepository(current)
     return InMemoryEscrowRepository()

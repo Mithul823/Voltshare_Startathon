@@ -9,6 +9,7 @@ to browse available energy.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter
 from pydantic import Field
@@ -133,13 +134,8 @@ def mock_cancel_listing(listing_id: str) -> EnergyListing:
 #  Internal helpers
 # ═══════════════════════════════════════════════════════════════════════
 
-_ID_COUNTER: int = 0
-
-
 def _next_id() -> str:
-    global _ID_COUNTER
-    _ID_COUNTER += 1
-    return f"mock-listing-{_ID_COUNTER}"
+    return f"mock-listing-{uuid4()}"
 
 
 def _initials(name: str) -> str:
@@ -156,3 +152,25 @@ def _parse_dt(val: str | None) -> datetime | None:
         return datetime.fromisoformat(val.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+
+
+class MockQuantityBody(ApiModel):
+    availableEnergyKwh: float = Field(ge=0, allow_inf_nan=False)
+
+
+@router.post("/{listing_id}/pause", response_model=EnergyListing)
+def mock_pause_listing(listing_id: str) -> EnergyListing:
+    return _repo.update(listing_id, listingStatus=ListingStatus.paused)
+
+
+@router.post("/{listing_id}/delete")
+def mock_delete_listing(listing_id: str) -> dict:
+    _repo.delete(listing_id)
+    return {"deleted": True}
+
+
+@router.post("/{listing_id}/quantity", response_model=EnergyListing)
+def mock_update_quantity(listing_id: str, body: MockQuantityBody) -> EnergyListing:
+    listing = _repo.get(listing_id)
+    return _repo.update(listing_id, availableEnergyKwh=body.availableEnergyKwh,
+        quantityTotalKwh=body.availableEnergyKwh + listing.quantityReservedKwh)

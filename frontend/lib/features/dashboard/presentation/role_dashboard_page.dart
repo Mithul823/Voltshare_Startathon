@@ -129,7 +129,7 @@ class ConsumerDashboard extends StatelessWidget {
         ),
         _Metric(
           'Recent purchases',
-          'Development data',
+          '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
           Icons.shopping_cart_outlined,
         ),
       ],
@@ -198,12 +198,12 @@ class ProducerDashboard extends StatelessWidget {
         ),
         _Metric(
           'Active listings',
-          'Development data',
+          '${snapshot.availableToSellKwh.toStringAsFixed(1)} kWh',
           Icons.inventory_2_outlined,
         ),
         _Metric(
           'Pending settlements',
-          'Development data',
+          'Rs ${(snapshot.availableToSellKwh * 4.1).toStringAsFixed(0)}',
           Icons.lock_clock_outlined,
         ),
         _Metric(

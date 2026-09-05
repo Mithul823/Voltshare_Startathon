@@ -328,6 +328,32 @@ _COLUMN_MAP: dict[str, str] = {
 _REVERSE_MAP: dict[str, str] = {v: k for k, v in _COLUMN_MAP.items() if v is not None}
 
 
+def _safe_energy_source(val: Any) -> EnergySource:
+    if not val:
+        return EnergySource.solar
+    val_str = str(val).strip()
+    try:
+        return EnergySource(val_str)
+    except Exception:
+        try:
+            return EnergySource(val_str.lower())
+        except Exception:
+            return EnergySource.solar
+
+
+def _safe_listing_status(val: Any) -> ListingStatus:
+    if not val:
+        return ListingStatus.active
+    val_str = str(val).strip()
+    try:
+        return ListingStatus(val_str)
+    except Exception:
+        try:
+            return ListingStatus(val_str.lower())
+        except Exception:
+            return ListingStatus.active
+
+
 def _row_to_listing(row: dict[str, Any]) -> EnergyListing:
     """Convert a Supabase result row to an EnergyListing Pydantic model."""
     return EnergyListing(
@@ -338,7 +364,7 @@ def _row_to_listing(row: dict[str, Any]) -> EnergyListing:
         sellerInitials=str(row.get("seller_initials", "ES")),
         sellerRating=float(row.get("seller_rating", 4.8)),
         reviewCount=int(row.get("review_count", 0)),
-        energySource=EnergySource(row.get("energy_source", "solar")),
+        energySource=_safe_energy_source(row.get("energy_source")),
         availableEnergyKwh=float(row.get("quantity_available_kwh", 0)),
         pricePerKwh=float(row.get("price_per_kwh", 0)),
         distanceKm=float(row.get("distance_km", 0)),
@@ -349,7 +375,7 @@ def _row_to_listing(row: dict[str, Any]) -> EnergyListing:
         availabilityEnd=_parse_dt(row.get("available_until")),
         createdAt=_parse_dt(row.get("created_at")),
         updatedAt=_parse_dt(row.get("updated_at")),
-        listingStatus=ListingStatus(row.get("status", "active")),
+        listingStatus=_safe_listing_status(row.get("status")),
         notes=row.get("notes"),
         title=row.get("title"),
         description=row.get("description"),
@@ -560,41 +586,43 @@ class SupabaseMarketplaceRepository:
         )
 
     def get(self, listing_id: str) -> EnergyListing:
-        self._require_client()
-        result = self._build_select().eq("id", listing_id).limit(1).execute()
-        if not result.data:
-            raise ApiError(404, ErrorCode.MARKETPLACE_LISTING_NOT_FOUND, "Listing not found.")
-        return _row_to_listing(result.data[0])
+        from app.repositories.financial_store import connection
+        from psycopg.rows import dict_row
+        with connection() as conn:
+            row = conn.cursor(row_factory=dict_row).execute("SELECT * FROM energy_listings WHERE id=%s FOR UPDATE", (listing_id,)).fetchone()
+            if row is None:
+                raise ApiError(404, ErrorCode.MARKETPLACE_LISTING_NOT_FOUND, "Listing not found.")
+            return _row_to_listing(row)
 
     def get_for_update(self, listing_id: str) -> EnergyListing:
-        """Fetch listing with SELECT ... FOR UPDATE semantics.
-
-        In Supabase this is approximated by a simple select.  The actual
-        row-locking is handled by the ``create_energy_purchase_order`` RPC.
-        """
         return self.get(listing_id)
 
     def create(self, listing: EnergyListing) -> EnergyListing:
-        self._require_client()
+        from app.repositories.financial_store import connection
+        from psycopg import sql
+        from psycopg.rows import dict_row
         row = _listing_to_row(listing)
-        row["id"] = listing.id
-        result = self._client.table(self._table).insert(row).execute()
-        if not result.data:
-            raise ApiError(500, ErrorCode.DATABASE_ERROR, "Failed to create listing in database.")
-        return _row_to_listing(result.data[0])
+        from uuid import uuid4
+        row["id"] = str(uuid4())
+        with connection() as conn:
+            query = sql.SQL("INSERT INTO energy_listings ({}) VALUES ({}) RETURNING *").format(sql.SQL(",").join(map(sql.Identifier, row)), sql.SQL(",").join(sql.Placeholder() for _ in row))
+            saved = conn.cursor(row_factory=dict_row).execute(query, list(row.values())).fetchone()
+            return _row_to_listing(saved)
 
     def update(self, listing_id: str, **patch: Any) -> EnergyListing:
-        self._require_client()
-        # Convert camelCase keys to snake_case for the DB
-        db_patch: dict[str, Any] = {}
-        for key, value in patch.items():
-            db_key = _REVERSE_MAP.get(key, key)
-            db_patch[db_key] = value
-        db_patch["updated_at"] = now_utc().isoformat()
-        result = self._client.table(self._table).update(db_patch).eq("id", listing_id).execute()
-        if not result.data:
-            raise ApiError(404, ErrorCode.MARKETPLACE_LISTING_NOT_FOUND, "Listing not found after update.")
-        return _row_to_listing(result.data[0])
+        from app.repositories.financial_store import connection
+        from psycopg import sql
+        from psycopg.rows import dict_row
+        values = {_REVERSE_MAP[k]: getattr(v, "value", v) for k, v in patch.items() if k in _REVERSE_MAP}
+        if values.get("status") == "sold":
+            values["status"] = "sold_out"
+        values["updated_at"] = now_utc()
+        with connection() as conn:
+            query = sql.SQL("UPDATE energy_listings SET {} WHERE id=%s RETURNING *").format(sql.SQL(",").join(sql.SQL("{}=%s").format(sql.Identifier(k)) for k in values))
+            row = conn.cursor(row_factory=dict_row).execute(query, [*values.values(), listing_id]).fetchone()
+            if row is None:
+                raise ApiError(404, ErrorCode.MARKETPLACE_LISTING_NOT_FOUND, "Listing not found.")
+            return _row_to_listing(row)
 
     def summary(self) -> MarketplaceSummaryResponse:
         listings = self.list(active_only=True)
@@ -674,6 +702,6 @@ def get_marketplace_repository(settings: Settings | None = None) -> MarketplaceR
     *Otherwise → ``InMemoryMarketplaceRepository``*
     """
     current = settings or get_settings()
-    if current.supabase_url and current.supabase_service_role_key:
+    if current.financial_database_url or current.is_production or (current.supabase_url and current.supabase_service_role_key):
         return SupabaseMarketplaceRepository(current)
     return InMemoryMarketplaceRepository()

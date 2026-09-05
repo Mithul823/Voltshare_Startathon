@@ -3,9 +3,10 @@ from typing import cast
 from fastapi import APIRouter, Depends, Header, Response
 
 from app.api.dependencies import get_current_user, require_roles
+from app.core.exceptions import ApiError, ErrorCode
 from app.core.idempotency import idempotency_store
 from app.core.security import AuthenticatedUser
-from app.repositories.state import state
+from app.repositories.financial_store import financial_state as state
 from app.schemas.escrow import DeliveryVerificationRequest, Dispute, DisputeRequest, EscrowAgreement, EscrowSettlementResult, ReconciliationReport
 from app.services.escrow_service import escrow_service
 
@@ -46,12 +47,12 @@ def dispute_for_escrow(escrow_id: str, request: DisputeRequest, user: Authentica
 
 
 @router.get("/default-cases")
-def default_cases() -> list[dict]:
+def default_cases(user: AuthenticatedUser = Depends(require_roles("admin"))) -> list[dict]:
     return list(state.default_cases.values())
 
 
 @router.get("/default-cases/{case_id}")
-def default_case(case_id: str) -> dict:
+def default_case(case_id: str, user: AuthenticatedUser = Depends(require_roles("admin"))) -> dict:
     return state.default_cases.get(case_id, {})
 
 
@@ -69,8 +70,12 @@ def create_dispute(request: DisputeRequest, escrow_id: str, user: AuthenticatedU
 
 
 @router.get("/disputes/{dispute_id}", response_model=Dispute)
-def dispute(dispute_id: str) -> Dispute:
-    return state.disputes[dispute_id]
+def dispute(dispute_id: str, user: AuthenticatedUser = Depends(get_current_user)) -> Dispute:
+    item = state.disputes.get(dispute_id)
+    if item is None:
+        raise ApiError(404, ErrorCode.RESOURCE_NOT_FOUND, "Dispute not found.")
+    escrow_service.ensure_participant(user, escrow_service.get(item.escrowId))
+    return item
 
 
 @router.post("/escrows/reconcile", response_model=ReconciliationReport)

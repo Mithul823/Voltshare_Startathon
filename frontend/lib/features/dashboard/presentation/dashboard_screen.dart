@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/widgets/voltshare_ui.dart'
     show PrimaryActionButton, ResponsivePage, SecondaryActionButton;
 import '../../../core/errors/app_exception.dart';
 import '../../admin_dashboard/presentation/admin_dashboard_screen.dart';
 import '../../ai/presentation/ai_widgets.dart';
 import '../../authentication/data/auth_repository.dart';
+import '../../authentication/domain/user_profile.dart';
 import '../../authentication/domain/user_role.dart';
 import '../domain/dashboard_snapshot.dart' show DashboardSnapshot;
 import '../providers/dashboard_provider.dart';
@@ -83,7 +85,7 @@ class _UserDashboardScreenState extends ConsumerState<_UserDashboardScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (profileState.hasError) {
+    if (profileState.hasError && !ref.watch(appConfigProvider).isMockMode) {
       return Scaffold(
         body: SafeArea(
           child: _RoleLoadError(
@@ -94,7 +96,21 @@ class _UserDashboardScreenState extends ConsumerState<_UserDashboardScreen> {
       );
     }
 
-    final profile = profileState.valueOrNull;
+    final profile =
+        profileState.valueOrNull ??
+        (ref.watch(appConfigProvider).isMockMode
+            ? UserProfile(
+                id: 'producer-1',
+                email: 'ravi@voltshare-demo.local',
+                fullName: 'Ravi Kumar',
+                phone: '+91 9876543210',
+                role: UserRole.prosumer,
+                city: 'Kochi',
+                district: 'Ernakulam',
+                state: 'Kerala',
+              )
+            : null);
+
     if (profile == null) {
       return Scaffold(
         body: SafeArea(

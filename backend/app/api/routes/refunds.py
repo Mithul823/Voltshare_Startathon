@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, Response
 from app.api.dependencies import get_current_user
 from app.core.idempotency import idempotency_store
 from app.core.security import AuthenticatedUser
-from app.repositories.state import state
+from app.repositories.financial_store import financial_state as state
 from app.schemas.common import UserRole
 from app.schemas.wallet import Refund, RefundRequest, WalletTransaction
 from app.services.refund_service import refund_service

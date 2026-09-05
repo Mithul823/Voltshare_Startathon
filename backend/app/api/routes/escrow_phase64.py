@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, Response
 from app.api.dependencies import get_current_user
 from app.core.idempotency import idempotency_store
 from app.core.security import AuthenticatedUser
-from app.repositories.state import state
+from app.repositories.financial_store import financial_state as state
 from app.schemas.escrow import DeliveryVerificationRequest, EscrowAgreement, EscrowSettlementResult
 from app.services.escrow_service import escrow_service
 
@@ -32,17 +32,17 @@ def create_existing_purchase_escrow(purchaseId: str, user: AuthenticatedUser = D
 @router.post("/release", response_model=EscrowSettlementResult)
 def release(
     escrowId: str,
+    request: DeliveryVerificationRequest,
     response: Response,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> EscrowSettlementResult:
     escrow = escrow_service.get(escrowId)
-    request = DeliveryVerificationRequest(deliveredEnergyKwh=escrow.energyQuantityKwh)
     status, payload = idempotency_store.run(
         key=idempotency_key,
         user_id=user.user_id,
         operation=f"escrow_release:{escrowId}",
-        payload={"escrowId": escrowId},
+        payload={"escrowId": escrowId, **request.model_dump(mode="json")},
         handler=lambda: (200, escrow_service.verify_and_settle(user, escrowId, request, idempotency_key or "")),
     )
     response.status_code = status

@@ -289,6 +289,12 @@ class JsonFileMarketplaceRepository(InMemoryMarketplaceRepository):
         self._save_to_file()
         return result
 
+    def delete(self, listing_id: str) -> None:
+        with self._file_lock:
+            self.get(listing_id)
+            del self._state.listings[listing_id]
+            self._save_to_file()
+
     def reserve_quantity(self, listing_id: str, quantity_kwh: float) -> EnergyListing:
         result = super().reserve_quantity(listing_id, quantity_kwh)
         self._save_to_file()

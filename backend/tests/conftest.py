@@ -12,6 +12,13 @@ from app.schemas.profile import Profile
 
 
 @pytest.fixture(autouse=True)
+def configure_test_signing_key(monkeypatch):
+    monkeypatch.setattr(get_settings(), "supabase_service_role_key", "")
+    monkeypatch.setattr(get_settings(), "financial_database_url", "")
+    monkeypatch.setattr(get_settings(), "supabase_jwt_secret", "test-secret-for-signature-verification")
+
+
+@pytest.fixture(autouse=True)
 def auto_force_inmemory_repositories(monkeypatch) -> None:
     """Force all repository factories to return in-memory implementations.
 
@@ -91,6 +98,8 @@ def auto_force_inmemory_repositories(monkeypatch) -> None:
 @pytest.fixture(autouse=True)
 def auto_clear_profiles_and_state() -> None:
     profile_repository.clear_test_profiles()
+    from app.repositories.kyc_repository import kyc_repository
+    kyc_repository._memory_records.clear()
     # Clear the global in-memory state between tests
     from app.repositories.state import state
     state.listings.clear()
@@ -131,7 +140,9 @@ def auth_headers(user_id: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {make_token(user_id)}"}
 
 
-def seed_profile(user_id: str, role: UserRole = UserRole.consumer) -> None:
+def seed_profile(user_id: str, role: UserRole = UserRole.consumer, *, verified_kyc: bool = True) -> None:
+    if verified_kyc:
+        seed_kyc(user_id, role)
     profile_repository.set_test_profile(
         Profile(
             id=user_id,
@@ -142,3 +153,9 @@ def seed_profile(user_id: str, role: UserRole = UserRole.consumer) -> None:
             is_active=True,
         )
     )
+
+
+def seed_kyc(user_id, role=UserRole.consumer):
+    from app.repositories.kyc_repository import kyc_repository
+    from app.schemas.kyc import KycRecord, KycStatus
+    kyc_repository._records[user_id] = KycRecord(id=user_id, user_id=user_id, user_role=role.value, full_name="Test User", date_of_birth="1990-01-01", address="Test address", district="Test", state="Test", pin_code="123456", id_type="pan", id_number="TEST123", phone="1234567890", status=KycStatus.verified)

@@ -113,3 +113,35 @@ def test_user_cannot_modify_role_through_profile_update(client: TestClient) -> N
     assert body["full_name"] == "Updated Name"
     assert body["role"] == "consumer"
     assert body["is_active"] is True
+
+
+def test_unsigned_fallback_is_disabled_in_all_environments():
+    import pytest
+    from app.core.exceptions import ApiError
+
+    forged = jwt.encode({"sub": "existing-user", "exp": 4102444800}, "attacker-key-for-signature-test-only", algorithm="HS256")
+    for environment in ("development", "demo", "test", "production"):
+        settings = Settings(_env_file=None, app_env=environment, supabase_jwt_secret="", supabase_jwks_url="")
+        with pytest.raises(ApiError) as error:
+            decode_supabase_token(forged, settings)
+        assert error.value.status_code == 500
+
+
+def test_wrong_signature_is_rejected():
+    import pytest
+    from app.core.exceptions import ApiError
+
+    settings = Settings(_env_file=None, supabase_jwt_secret="trusted-signing-key-for-test-only")
+    forged = jwt.encode({"sub": "existing-user", "exp": 4102444800}, "attacker-signing-key-for-test-only", algorithm="HS256")
+    with pytest.raises(ApiError) as error:
+        decode_supabase_token(forged, settings)
+    assert error.value.status_code == 401
+
+
+
+def test_suspended_user_cannot_access_wallet(client):
+    from app.repositories.profile_repository import profile_repository
+    from app.schemas.profile import Profile
+    profile_repository.set_test_profile(Profile(id="suspended", email="suspended@example.com", full_name="Suspended", role=UserRole.consumer, email_verified=True, is_active=False))
+    response = client.get("/api/v1/wallet", headers=auth_headers("suspended"))
+    assert response.status_code == 403

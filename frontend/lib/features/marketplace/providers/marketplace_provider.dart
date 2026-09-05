@@ -16,32 +16,37 @@ import '../domain/energy_listing.dart';
 import '../domain/energy_purchase.dart';
 import '../domain/sell_listing_draft.dart';
 
+final marketplaceEventClientProvider = Provider<http.Client>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return client;
+});
+
 /// Resolves the current user ID from the authenticated session or profile.
 /// In mock mode, still uses the real Supabase auth if available.
 /// Falls back to a per-session mock user ID if no Supabase session exists.
 String _currentUserId(Ref ref) {
-  final profile = ref.watch(currentProfileProvider).valueOrNull;
+  final profile = ref.read(currentProfileProvider).valueOrNull;
   if (profile != null) return profile.id;
   final session = ref.read(currentSessionProvider);
   if (session != null) return session.user.id;
-  // If no Supabase session exists (mock mode without Supabase), use mock user
-  return '';
+  return 'producer-1';
 }
 
 String _currentUserRole(Ref ref) {
   final profile = ref.watch(currentProfileProvider).valueOrNull;
   if (profile != null) return profile.role.value;
-  return 'consumer';
+  return ref.watch(appConfigProvider).isMockMode ? 'prosumer' : 'consumer';
 }
 
 String _currentUserName(Ref ref) {
   final profile = ref.watch(currentProfileProvider).valueOrNull;
   if (profile != null) return profile.fullName;
-  return 'Energy Seller';
+  return 'Ravi Solar Producer';
 }
 
 /// In live mode, uses [MarketplaceApiRepository].
-/// In mock mode, uses [MarketplaceMockRepository] with the real auth identity.
+/// In mock mode, uses [MarketplaceMockApiRepository] with local MockBackendStore fallback.
 /// This ensures:
 /// - Listings survive logout (stored in MockBackendStore singleton)
 /// - sellerId/buyerId come from the authenticated user, not a hardcoded value
@@ -55,7 +60,7 @@ final marketplaceRepositoryProvider = Provider<MarketplaceRepository>((ref) {
     return MarketplaceApiRepository(ref.watch(apiClientProvider));
   }
   // In mock mode, use the mock API repository that posts/gets listings
-  // from the backend's /mock/listings endpoint (persisted as JSON file).
+  // from the backend's /mock/listings endpoint with automatic in-memory fallback.
   return MarketplaceMockApiRepository(
     baseUrl: ref.watch(appConfigProvider).apiBaseUrl,
     currentUserId: _currentUserId(ref),
@@ -90,7 +95,10 @@ final latestPurchaseProvider = StateProvider<EnergyPurchase?>((ref) => null);
 
 final marketplaceRoleProvider = FutureProvider<UserRole>((ref) async {
   final profile = await ref.watch(currentProfileProvider.future);
-  return profile?.role ?? UserRole.consumer;
+  if (profile != null) return profile.role;
+  return ref.watch(appConfigProvider).isMockMode
+      ? UserRole.prosumer
+      : UserRole.consumer;
 });
 
 class MarketplacePermissions {
@@ -101,11 +109,13 @@ class MarketplacePermissions {
 }
 
 final marketplacePermissionsProvider = Provider<MarketplacePermissions>((ref) {
+  final isMock = ref.watch(appConfigProvider).isMockMode;
   final role =
-      ref.watch(marketplaceRoleProvider).valueOrNull ?? UserRole.consumer;
+      ref.watch(marketplaceRoleProvider).valueOrNull ??
+      (isMock ? UserRole.prosumer : UserRole.consumer);
   return MarketplacePermissions(
-    canBuy: role == UserRole.consumer || role == UserRole.prosumer,
-    canSell: role == UserRole.producer || role == UserRole.prosumer,
+    canBuy: isMock || role == UserRole.consumer || role == UserRole.prosumer,
+    canSell: isMock || role == UserRole.producer || role == UserRole.prosumer,
   );
 });
 
@@ -134,10 +144,6 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
           .read(marketplaceRepositoryProvider)
           .listingById(listingId);
 
-      // Fire speech bubble events with the actual price
-      _sendSpeechHomeRight(listing.pricePerKwh);
-      _sendSellEvent(listing.pricePerKwh, quantityKwh);
-
       // Call backend purchase endpoint - handles escrow, wallet debit, ledger atomically
       final purchase = await _ref
           .read(marketplaceRepositoryProvider)
@@ -163,9 +169,7 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
       } else {
         // In live mode, the backend already created escrow and debited wallet.
         // Just refresh providers to reflect the new state.
-        unawaited(_ref
-            .read(walletControllerProvider.notifier)
-            .refresh());
+        unawaited(_ref.read(walletControllerProvider.notifier).refresh());
         unawaited(_ref.read(escrowControllerProvider.notifier).refresh());
       }
 
@@ -173,6 +177,8 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
       _ref.invalidate(marketplaceListingsProvider);
       _ref.invalidate(myListingsProvider);
       state = AsyncValue.data(purchase);
+      _sendSpeechHomeRight(purchase.unitPrice);
+      _sendSellEvent(purchase.unitPrice, purchase.quantityKwh);
       return purchase;
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
@@ -186,15 +192,21 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
   }
 
   Future<void> _postSpeechHomeRight(double price) async {
+    final baseUrl = _ref.read(appConfigProvider).eventServerUrl;
+    if (baseUrl.isEmpty) return;
     try {
-      await http.post(
-        Uri.parse('https://bullpen-unsorted-clad.ngrok-free.dev/api/speech/home_right'),
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: '{"price": $price, "message": "Buying for $price"}',
-      );
+      await _ref
+          .read(marketplaceEventClientProvider)
+          .post(
+            Uri.parse(
+              '${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/speech/home_right',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body: '{"price": $price, "message": "Buying for $price"}',
+          );
     } catch (_) {
       // Silently ignore send failures.
     }
@@ -206,15 +218,20 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
   }
 
   Future<void> _postSellEvent(double price, double amountKw) async {
+    final baseUrl = _ref.read(appConfigProvider).eventServerUrl;
+    if (baseUrl.isEmpty) return;
     try {
-      await http.post(
-        Uri.parse('https://bullpen-unsorted-clad.ngrok-free.dev/api/sell'),
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: '{"seller": "home_mid", "buyer": "home_right", "amountKw": $amountKw}',
-      );
+      await _ref
+          .read(marketplaceEventClientProvider)
+          .post(
+            Uri.parse('${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/sell'),
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body:
+                '{"seller": "home_mid", "buyer": "home_right", "amountKw": $amountKw}',
+          );
     } catch (_) {
       // Silently ignore send failures.
     }
@@ -239,9 +256,6 @@ class SellListingController extends StateNotifier<AsyncValue<EnergyListing?>> {
   }) async {
     state = const AsyncValue.loading();
     try {
-      // Fire speech home-mid event for producer listing
-      _sendSpeechHomeMid(draft.pricePerKwh);
-
       final permissions = _ref.read(marketplacePermissionsProvider);
       final listing = await _ref
           .read(marketplaceRepositoryProvider)
@@ -253,6 +267,7 @@ class SellListingController extends StateNotifier<AsyncValue<EnergyListing?>> {
       _ref.invalidate(marketplaceListingsProvider);
       _ref.invalidate(myListingsProvider);
       state = AsyncValue.data(listing);
+      _sendSpeechHomeMid(listing.pricePerKwh);
       return listing;
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
@@ -266,15 +281,21 @@ class SellListingController extends StateNotifier<AsyncValue<EnergyListing?>> {
   }
 
   Future<void> _postSpeechHomeMid(double price) async {
+    final baseUrl = _ref.read(appConfigProvider).eventServerUrl;
+    if (baseUrl.isEmpty) return;
     try {
-      await http.post(
-        Uri.parse('https://bullpen-unsorted-clad.ngrok-free.dev/api/speech/home_mid'),
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: '{"price": $price}',
-      );
+      await _ref
+          .read(marketplaceEventClientProvider)
+          .post(
+            Uri.parse(
+              '${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/speech/home_mid',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body: '{"price": $price}',
+          );
     } catch (_) {
       // Silently ignore send failures.
     }

@@ -41,6 +41,16 @@ class KycService:
     async def get_my_kyc(self, user: AuthenticatedUser) -> Optional[KycRecord]:
         return await kyc_repository.get_my_kyc(user.user_id)
 
+    def ensure_can_trade(self, user: AuthenticatedUser, *, selling: bool = False) -> None:
+        allowed = {"producer", "prosumer"} if selling else {"consumer", "prosumer"}
+        if user.role.value == "admin":
+            return
+        record = kyc_repository._get_by_user_id(user.user_id)
+        if user.role.value not in allowed:
+            raise ApiError(403, ErrorCode.MARKETPLACE_ROLE_NOT_ALLOWED, "This role cannot perform this trade.")
+        if record is None or record.status != KycStatus.verified:
+            raise ApiError(403, ErrorCode.ACCESS_DENIED, "Approved KYC is required before trading.")
+
     async def check_can_purchase(self, user: AuthenticatedUser) -> bool:
         """Consumers and prosumers must have approved KYC before purchasing."""
         role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)

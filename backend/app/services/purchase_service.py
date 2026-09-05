@@ -1,21 +1,8 @@
-"""Purchase service — orchestrates the atomic purchase flow.
-
-The purchase flow involves:
-1. Validate listing availability and buyer role
-2. Reserve listing quantity (via marketplace repository)
-3. Create escrow (via escrow repository)
-4. Hold funds in buyer's wallet (via wallet repository)
-5. Persist purchase record
-
-In live (Supabase) mode, steps 1–5 use the existing ``create_energy_purchase_order``
-RPC for atomicity.  In demo mode, steps are performed sequentially against
-in-memory repositories.
-"""
+"""Purchase orchestration within a shared transaction; events publish after commit."""
 
 from decimal import Decimal
 
-from decimal import Decimal
-
+from app.core.financial_transaction import atomic
 from app.core.exceptions import ApiError, ErrorCode
 from app.core.security import AuthenticatedUser
 from app.repositories.marketplace_repository import get_marketplace_repository
@@ -56,7 +43,10 @@ class PurchaseService:
             self._purchase_repo_instance = get_purchase_repository()
         return self._purchase_repo_instance
 
+    @atomic
     def create(self, user: AuthenticatedUser, request: PurchaseCreateRequest, idempotency_key: str | None = None) -> PurchaseCreateResponse:
+        from app.services.kyc_service import kyc_service
+        kyc_service.ensure_can_trade(user, selling=False)
         if user.role not in {UserRole.consumer, UserRole.prosumer}:
             raise ApiError(403, ErrorCode.MARKETPLACE_ROLE_NOT_ALLOWED, "Only consumers and prosumers can buy energy.")
         listing = self._marketplace.get(request.listingId)
@@ -172,6 +162,7 @@ class PurchaseService:
         purchases.sort(key=lambda item: item.purchasedAt, reverse=True)
         return purchases
 
+    @atomic
     def cancel(self, user: AuthenticatedUser, purchase_id: str) -> EnergyPurchase:
         purchase = self.get(user, purchase_id)
         if purchase.status not in {PurchaseStatus.pending, PurchaseStatus.initiated, PurchaseStatus.reserved}:

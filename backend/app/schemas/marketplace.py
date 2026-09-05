@@ -15,10 +15,12 @@ class EnergySource(str, Enum):
     mixed_renewable = "mixed_renewable"
     other = "other"
     communitySolar = "communitySolar"
+    community_solar = "community_solar"
     hybrid = "hybrid"
 
 
 class ListingStatus(str, Enum):
+    paused = "paused"
     draft = "draft"
     active = "active"
     partially_reserved = "partially_reserved"

@@ -1,3 +1,4 @@
+from app.core.exceptions import ApiError, ErrorCode
 from app.core.security import AuthenticatedUser, TokenClaims
 from app.repositories.profile_repository import profile_repository
 from app.schemas.profile import AuthenticatedProfile, Profile, ProfileUpdate
@@ -6,6 +7,8 @@ from app.schemas.profile import AuthenticatedProfile, Profile, ProfileUpdate
 class UserService:
     async def user_from_claims(self, token: str, claims: TokenClaims) -> AuthenticatedUser:
         profile = await profile_repository.get_profile(claims.subject, email=claims.email)
+        if not profile.is_active:
+            raise ApiError(403, ErrorCode.ACCESS_DENIED, "This account is suspended.")
         return AuthenticatedUser(user_id=claims.subject, email=claims.email, role=profile.role, token=token)
 
     async def current_profile(self, user: AuthenticatedUser) -> AuthenticatedProfile:

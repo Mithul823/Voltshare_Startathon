@@ -79,14 +79,6 @@ def decode_supabase_token(token: str, settings: Settings) -> TokenClaims:
                 },
                 issuer=expected_issuer,
             )
-        elif settings.app_env in {"development", "demo", "test"}:
-            payload = jwt.decode(token, options={
-                "verify_signature": False,
-                "verify_aud": False,
-                "verify_iss": False,
-                "verify_exp": True,
-                "verify_iat": True,
-            })
         else:
             raise ApiError(500, ErrorCode.CONFIGURATION_ERROR, "JWT verification is not configured.")
     except ApiError:
