@@ -16,6 +16,7 @@ import '../../../core/network/api_client.dart';
 import '../data/marketplace_api_repository.dart';
 import '../data/marketplace_mock_api_repository.dart';
 import '../data/marketplace_mock_repository.dart';
+import '../data/mock_backend_store.dart';
 import '../domain/energy_listing.dart';
 import '../domain/energy_purchase.dart';
 import '../domain/sell_listing_draft.dart';
@@ -30,23 +31,34 @@ final marketplaceEventClientProvider = Provider<http.Client>((ref) {
 /// In mock mode, still uses the real Supabase auth if available.
 /// Falls back to a per-session mock user ID if no Supabase session exists.
 String _currentUserId(Ref ref) {
-  final profile = ref.read(currentProfileProvider).valueOrNull;
-  if (profile != null) return profile.id;
-  final session = ref.read(currentSessionProvider);
-  if (session != null) return session.user.id;
-  return 'producer-1';
+  final profile = ref.watch(currentProfileProvider).valueOrNull;
+  if (profile != null && profile.id.isNotEmpty) return profile.id;
+  final session = ref.watch(currentSessionProvider);
+  if (session != null && session.user.id.isNotEmpty) return session.user.id;
+  final role = _currentUserRole(ref);
+  return role == 'producer' ? 'producer-1' : 'consumer-1';
 }
 
 String _currentUserRole(Ref ref) {
   final profile = ref.watch(currentProfileProvider).valueOrNull;
   if (profile != null) return profile.role.value;
-  return ref.watch(appConfigProvider).isMockMode ? 'prosumer' : 'consumer';
+  final session = ref.watch(currentSessionProvider);
+  if (session != null) {
+    final role = session.user.userMetadata?['role']?.toString();
+    if (role != null && role.isNotEmpty) return role;
+  }
+  return 'consumer';
 }
 
 String _currentUserName(Ref ref) {
   final profile = ref.watch(currentProfileProvider).valueOrNull;
-  if (profile != null) return profile.fullName;
-  return 'Ravi Solar Producer';
+  if (profile != null && profile.fullName.isNotEmpty) return profile.fullName;
+  final session = ref.watch(currentSessionProvider);
+  if (session != null) {
+    final name = session.user.userMetadata?['full_name']?.toString();
+    if (name != null && name.isNotEmpty) return name;
+  }
+  return 'VoltShare User';
 }
 
 /// In live mode, uses [MarketplaceApiRepository].
@@ -60,6 +72,7 @@ String _currentUserName(Ref ref) {
 final marketplaceRepositoryProvider = Provider<MarketplaceRepository>((ref) {
   // Watch auth state to rebuild when user logs in/out
   ref.watch(currentProfileProvider);
+  ref.watch(currentSessionProvider);
   if (ref.watch(appConfigProvider).isLiveMode) {
     return MarketplaceApiRepository(ref.watch(apiClientProvider));
   }
@@ -98,7 +111,7 @@ final marketplaceRoleProvider = FutureProvider<UserRole>((ref) async {
   final profile = await ref.watch(currentProfileProvider.future);
   if (profile != null) return profile.role;
   return ref.watch(appConfigProvider).isMockMode
-      ? UserRole.prosumer
+      ? UserRole.consumer
       : UserRole.consumer;
 });
 
@@ -113,7 +126,7 @@ final marketplacePermissionsProvider = Provider<MarketplacePermissions>((ref) {
   final isMock = ref.watch(appConfigProvider).isMockMode;
   final role =
       ref.watch(marketplaceRoleProvider).valueOrNull ??
-      (isMock ? UserRole.prosumer : UserRole.consumer);
+      (isMock ? UserRole.consumer : UserRole.consumer);
   return MarketplacePermissions(
     canBuy: isMock || role == UserRole.consumer || role == UserRole.prosumer,
     canSell: isMock || role == UserRole.producer || role == UserRole.prosumer,
@@ -141,9 +154,9 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
       final isMockMode = _ref.read(appConfigProvider).isMockMode;
       final permissions = _ref.read(marketplacePermissionsProvider);
       final buyerId = _currentUserId(_ref);
-      final listing = await _ref
-          .read(marketplaceRepositoryProvider)
-          .listingById(listingId);
+
+      final store = MockBackendStore();
+      final countBefore = store.purchases.length;
 
       // Call backend purchase endpoint - handles escrow, wallet debit, ledger atomically
       final purchase = await _ref
@@ -155,8 +168,23 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
             canBuy: permissions.canBuy,
           );
 
+      final countAfter = store.purchases.length;
+      final consumerFilteredCount = store.getPurchasesByBuyer(buyerId).length;
+
+      // Development logging for full trace verification
+      // ignore: avoid_print
+      print(
+        '[PurchaseFlow] Success: purchaseId=${purchase.id}, listingId=$listingId, '
+        'producerId=${purchase.sellerId}, consumerId=$buyerId, '
+        'countBefore=$countBefore, countAfter=$countAfter, '
+        'consumerFilteredCount=$consumerFilteredCount',
+      );
+
       if (isMockMode) {
         // In mock mode, create escrow and record wallet transaction locally
+        final listing = await _ref
+            .read(marketplaceRepositoryProvider)
+            .listingById(listingId);
         final escrow = await _ref
             .read(escrowControllerProvider.notifier)
             .createForPurchase(purchase: purchase, listing: listing);
@@ -179,15 +207,20 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
       _ref.invalidate(myListingsProvider);
       _ref.invalidate(purchasesListProvider);
       _ref.invalidate(salesProvider);
+      _ref.invalidate(walletControllerProvider);
       _ref.invalidate(dashboardProvider);
       _ref.invalidate(notificationsProvider);
       _ref.invalidate(unreadNotificationsProvider);
-      state = AsyncValue.data(purchase);
+      if (mounted) {
+        state = AsyncValue.data(purchase);
+      }
       _sendSpeechHomeRight(purchase.unitPrice);
       _sendSellEvent(purchase.unitPrice, purchase.quantityKwh);
       return purchase;
     } catch (error, stackTrace) {
-      state = AsyncValue.error(error, stackTrace);
+      if (mounted) {
+        state = AsyncValue.error(error, stackTrace);
+      }
       return null;
     }
   }
@@ -272,11 +305,15 @@ class SellListingController extends StateNotifier<AsyncValue<EnergyListing?>> {
           );
       _ref.invalidate(marketplaceListingsProvider);
       _ref.invalidate(myListingsProvider);
-      state = AsyncValue.data(listing);
+      if (mounted) {
+        state = AsyncValue.data(listing);
+      }
       _sendSpeechHomeMid(listing.pricePerKwh);
       return listing;
     } catch (error, stackTrace) {
-      state = AsyncValue.error(error, stackTrace);
+      if (mounted) {
+        state = AsyncValue.error(error, stackTrace);
+      }
       return null;
     }
   }

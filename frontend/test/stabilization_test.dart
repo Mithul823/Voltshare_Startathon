@@ -9,6 +9,7 @@ import 'package:frontend/features/marketplace/data/marketplace_mock_repository.d
 import 'package:frontend/features/marketplace/data/mock_backend_store.dart';
 import 'package:frontend/features/marketplace/domain/marketplace_filter.dart';
 import 'package:frontend/features/marketplace/domain/sell_listing_draft.dart';
+import 'package:frontend/features/purchases/data/purchases_repository.dart';
 
 class _FakeTokenProvider implements AuthTokenProvider {
   @override
@@ -302,6 +303,79 @@ void main() {
 
         final detailAfterReactivate = await adminRepo.getUserDetail(userId);
         expect(detailAfterReactivate.isActive, isTrue);
+      },
+    );
+
+    test(
+      'Mock purchase contains all canonical fields and persists across repository loads',
+      () async {
+        final store = MockBackendStore.fresh();
+        final producerRepo = MarketplaceMockRepository(
+          currentUserId: 'producer-1',
+          currentUserRole: 'producer',
+          store: store,
+        );
+        final consumerRepo = MarketplaceMockRepository(
+          currentUserId: 'consumer-1',
+          currentUserRole: 'consumer',
+          store: store,
+        );
+
+        final now = DateTime.now();
+
+        final listing = await producerRepo.createListing(
+          draft: SellListingDraft(
+            availableEnergyKwh: 5.0,
+            pricePerKwh: 8.0,
+            energySource: EnergySource.solar,
+            batteryReservePercentage: 20,
+            availabilityStart: now,
+            availabilityEnd: now.add(const Duration(hours: 4)),
+          ),
+          canSell: true,
+          maxAvailableKwh: 14.3,
+        );
+
+        final purchase = await consumerRepo.purchase(
+          listingId: listing.id,
+          buyerId: 'consumer-1',
+          quantityKwh: 2.0,
+          canBuy: true,
+        );
+
+        expect(purchase.id, isNotEmpty);
+        expect(purchase.listingId, listing.id);
+        expect(purchase.buyerId, 'consumer-1');
+        expect(purchase.sellerId, 'producer-1');
+        expect(purchase.quantityKwh, 2.0);
+        expect(purchase.unitPrice, 8.0);
+        expect(purchase.totalAmount, greaterThan(16.0));
+
+        // Verify stored canonical keys in MockBackendStore
+        final rawPurchase = store.purchases.firstWhere(
+          (p) => p['id'] == purchase.id,
+        );
+        expect(rawPurchase['consumerId'], 'consumer-1');
+        expect(rawPurchase['producerId'], 'producer-1');
+        expect(rawPurchase['listingId'], listing.id);
+        expect(rawPurchase['createdAt'], isNotNull);
+        expect(rawPurchase['updatedAt'], isNotNull);
+
+        // Load via Purchases Repository
+        final purchasesRepo = MockPurchasesRepository(
+          buyerId: 'consumer-1',
+          store: store,
+        );
+        final loadedPurchases = await purchasesRepo.loadPurchases();
+        expect(loadedPurchases.any((p) => p.id == purchase.id), isTrue);
+
+        // Verify another consumer cannot see it
+        final otherPurchasesRepo = MockPurchasesRepository(
+          buyerId: 'consumer-2',
+          store: store,
+        );
+        final otherLoadedPurchases = await otherPurchasesRepo.loadPurchases();
+        expect(otherLoadedPurchases.any((p) => p.id == purchase.id), isFalse);
       },
     );
   });

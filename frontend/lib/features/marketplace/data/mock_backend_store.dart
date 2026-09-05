@@ -47,8 +47,9 @@ class MockBackendStore {
       if (status != 'active') return false;
       final available = (l['availableEnergyKwh'] as num?)?.toDouble() ?? 0;
       if (available <= 0) return false;
-      if (excludeSellerId != null && l['sellerId'] == excludeSellerId)
+      if (excludeSellerId != null && l['sellerId'] == excludeSellerId) {
         return false;
+      }
       return true;
     }).toList();
   }
@@ -68,12 +69,60 @@ class MockBackendStore {
 
   Map<String, dynamic> addPurchase(Map<String, dynamic> purchase) {
     final id = _nextPurchaseId;
-    final entry = Map<String, dynamic>.from(purchase)..['id'] = id;
+    final nowIso = DateTime.now().toIso8601String();
+    final entry = Map<String, dynamic>.from(purchase);
+    entry['id'] = id;
+
+    // Canonical ID mappings for consumer/buyer and producer/seller
+    final listingId =
+        (entry['listingId'] ?? entry['listing_id'])?.toString() ?? '';
+    final buyerId =
+        (entry['buyerId'] ??
+                entry['buyer_id'] ??
+                entry['consumerId'] ??
+                entry['consumer_id'])
+            ?.toString() ??
+        '';
+    final sellerId =
+        (entry['sellerId'] ??
+                entry['seller_id'] ??
+                entry['producerId'] ??
+                entry['producer_id'])
+            ?.toString() ??
+        '';
+    final created =
+        (entry['createdAt'] ??
+                entry['created_at'] ??
+                entry['purchasedAt'] ??
+                entry['purchased_at'])
+            ?.toString() ??
+        nowIso;
+    final updated =
+        (entry['updatedAt'] ?? entry['updated_at'])?.toString() ?? nowIso;
+    final status = (entry['status'])?.toString() ?? 'completed';
+
+    entry['listingId'] = listingId;
+    entry['listing_id'] = listingId;
+    entry['buyerId'] = buyerId;
+    entry['buyer_id'] = buyerId;
+    entry['consumerId'] = buyerId;
+    entry['consumer_id'] = buyerId;
+    entry['sellerId'] = sellerId;
+    entry['seller_id'] = sellerId;
+    entry['producerId'] = sellerId;
+    entry['producer_id'] = sellerId;
+    entry['createdAt'] = created;
+    entry['created_at'] = created;
+    entry['purchasedAt'] = created;
+    entry['purchased_at'] = created;
+    entry['updatedAt'] = updated;
+    entry['updated_at'] = updated;
+    entry['status'] = status;
+
     purchases.add(entry);
 
-    // Track revenue only - inventory deduction is handled by the caller (purchase method)
-    final listingId = purchase['listingId']?.toString();
-    if (listingId != null && listings.containsKey(listingId)) {
+    // Track revenue on listing
+    if (listingId.isNotEmpty && listings.containsKey(listingId)) {
       final listing = listings[listingId]!;
       final qty = (purchase['quantityKwh'] as num?)?.toDouble() ?? 0;
       final totalAmount = (purchase['totalAmount'] as num?)?.toDouble() ?? 0;
@@ -87,36 +136,41 @@ class MockBackendStore {
   }
 
   List<Map<String, dynamic>> getPurchasesByBuyer(String userId) {
-    if (userId.isEmpty) return purchases;
+    if (userId.isEmpty) return List<Map<String, dynamic>>.from(purchases);
+    final normalizedUser = userId.toLowerCase().trim();
+    final cleanUserId = normalizedUser.replaceFirst('mock-', '');
     return purchases.where((p) {
-      final bId = p['buyerId']?.toString() ?? '';
-      if (bId == userId) return true;
-      if ((userId == 'mock-consumer-1' && bId == 'consumer-1') ||
-          (userId == 'consumer-1' && bId == 'mock-consumer-1')) {
-        return true;
-      }
-      if ((userId == 'mock-consumer-2' && bId == 'consumer-2') ||
-          (userId == 'consumer-2' && bId == 'mock-consumer-2')) {
-        return true;
-      }
-      return false;
+      final bId =
+          (p['buyerId'] ?? p['consumerId'] ?? p['buyer_id'] ?? p['consumer_id'])
+              ?.toString()
+              .toLowerCase()
+              .trim() ??
+          '';
+      if (bId.isEmpty) return false;
+      if (bId == normalizedUser) return true;
+      final cleanBId = bId.replaceFirst('mock-', '');
+      return cleanBId == cleanUserId;
     }).toList();
   }
 
   List<Map<String, dynamic>> getPurchasesBySeller(String userId) {
-    if (userId.isEmpty) return purchases;
+    if (userId.isEmpty) return List<Map<String, dynamic>>.from(purchases);
+    final normalizedUser = userId.toLowerCase().trim();
+    final cleanUserId = normalizedUser.replaceFirst('mock-', '');
     return purchases.where((p) {
-      final sId = p['sellerId']?.toString() ?? '';
-      if (sId == userId) return true;
-      if ((userId == 'mock-producer-1' && sId == 'producer-1') ||
-          (userId == 'producer-1' && sId == 'mock-producer-1')) {
-        return true;
-      }
-      if ((userId == 'mock-producer-2' && sId == 'producer-2') ||
-          (userId == 'producer-2' && sId == 'mock-producer-2')) {
-        return true;
-      }
-      return false;
+      final sId =
+          (p['sellerId'] ??
+                  p['producerId'] ??
+                  p['seller_id'] ??
+                  p['producer_id'])
+              ?.toString()
+              .toLowerCase()
+              .trim() ??
+          '';
+      if (sId.isEmpty) return false;
+      if (sId == normalizedUser) return true;
+      final cleanSId = sId.replaceFirst('mock-', '');
+      return cleanSId == cleanUserId;
     }).toList();
   }
 

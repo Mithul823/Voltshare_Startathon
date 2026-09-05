@@ -307,12 +307,12 @@ void main() {
 
   group('marketplace repository', () {
     test('loads, searches, filters, and sorts listings', () async {
-      final _store = MockBackendStore.fresh();
+      final store0 = MockBackendStore.fresh();
 
       final repository = MarketplaceMockRepository(
         currentUserId: 'test-user',
         currentUserRole: 'producer',
-        store: _store,
+        store: store0,
         now: DateTime(2026, 7, 18, 12),
       );
 

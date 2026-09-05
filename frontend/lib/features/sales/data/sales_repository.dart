@@ -107,22 +107,33 @@ class ProducerSalesPage {
 EnergyPurchase _parsePurchase(Map data) {
   final statusName = data['status']?.toString() ?? 'confirmed';
   final parsedStatus = PurchaseStatus.values.firstWhere(
-    (s) =>
-        s.name == statusName ||
-        s.name.toLowerCase() == statusName.toLowerCase(),
+    (s) => s.name.toLowerCase() == statusName.toLowerCase(),
     orElse: () => PurchaseStatus.completed,
   );
   return EnergyPurchase(
     id: data['id']?.toString() ?? '',
     listingId:
         data['listingId']?.toString() ?? data['listing_id']?.toString() ?? '',
-    buyerId: data['buyerId']?.toString() ?? data['buyer_id']?.toString() ?? '',
+    buyerId:
+        data['buyerId']?.toString() ??
+        data['buyer_id']?.toString() ??
+        data['consumerId']?.toString() ??
+        data['consumer_id']?.toString() ??
+        '',
     sellerId:
-        data['sellerId']?.toString() ?? data['seller_id']?.toString() ?? '',
+        data['sellerId']?.toString() ??
+        data['seller_id']?.toString() ??
+        data['producerId']?.toString() ??
+        data['producer_id']?.toString() ??
+        '',
     sellerName:
-        data['sellerName']?.toString() ?? data['seller_name']?.toString(),
+        data['sellerName']?.toString() ??
+        data['seller_name']?.toString() ??
+        'Energy Producer',
     listingTitle:
-        data['listingTitle']?.toString() ?? data['listing_title']?.toString(),
+        data['listingTitle']?.toString() ??
+        data['listing_title']?.toString() ??
+        'Clean Energy',
     quantityKwh: (data['quantityKwh'] ?? data['quantity_kwh'] ?? 0).toDouble(),
     unitPrice: (data['unitPrice'] ?? data['unit_price'] ?? 0).toDouble(),
     platformFee: (data['platformFee'] ?? data['platform_fee'] ?? 0).toDouble(),
@@ -134,6 +145,8 @@ EnergyPurchase _parsePurchase(Map data) {
         DateTime.tryParse(
           data['purchasedAt']?.toString() ??
               data['purchased_at']?.toString() ??
+              data['createdAt']?.toString() ??
+              data['created_at']?.toString() ??
               '',
         ) ??
         DateTime.now(),
@@ -155,6 +168,8 @@ abstract class SalesRepository {
 
 /// Provider that selects mock or live repository.
 final salesRepositoryProvider = Provider<SalesRepository>((ref) {
+  ref.watch(currentProfileProvider);
+  ref.watch(currentSessionProvider);
   if (ref.watch(appConfigProvider).isLiveMode) {
     return SalesApiRepository(ref.watch(apiClientProvider));
   }
@@ -288,8 +303,9 @@ class SalesMockRepository implements SalesRepository {
     await Future.delayed(const Duration(milliseconds: 80));
     _store.seed();
     final raw = _store.purchases.where((s) => s['id'] == saleId).firstOrNull;
-    if (raw == null)
+    if (raw == null) {
       throw ApiException(code: 'HTTP_404', message: 'Sale not found');
+    }
     return _parsePurchase(raw);
   }
 }

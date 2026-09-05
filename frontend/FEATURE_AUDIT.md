@@ -40,6 +40,7 @@
 | Feature | Component | Mock Implementation Status | State Management / Reactivity |
 |---|---|---|---|
 | **Dashboard** | `ProducerDashboardScreen` | **WORKING** | Displays generation metrics, battery storage levels, active listings count, and recent sales summary. |
+| **Producer Smart Meter** | `ProducerSmartMeterCard` | **WORKING (LIVE API)** | Fetches real-time IoT hardware telemetry (`power`, `energy`, `voltage`, `current`, `powerFactor`) from `https://startathon-voltshare-smartmeter.onrender.com/meter-metrics/producer`. Independent of business data backend (`USE_MOCK_BACKEND`). Auto-polling (3s), graceful cold-start handling, and stale-cache fallback. |
 | **Create Listing** | `CreateListingScreen` | **WORKING** | Enforces max available generation limit (e.g. 14.3 kWh), positive quantity check, source selector, and pricing. Appears immediately on Marketplace. |
 | **My Listings** | `MyListingsScreen` | **WORKING** | Lists producer's active and sold listings. Allows cancellation / delisting. |
 | **Sales & Revenue** | `SalesListScreen` / `SaleDetailScreen` | **WORKING** | Dynamically aggregates purchases made by consumers where `sellerId == currentProducer`. Computes total revenue, platform fees, and kWh delivered. |

@@ -6,7 +6,9 @@ import '../../../app/router.dart';
 import '../../../core/widgets/voltshare_ui.dart' show PrimaryActionButton;
 import '../../authentication/domain/user_profile.dart';
 import '../../authentication/domain/user_role.dart';
+import '../../metering/presentation/producer_smart_meter_card.dart';
 import '../../notifications/widgets/notification_bell.dart';
+import '../../purchases/data/purchases_repository.dart';
 import '../../realtime/providers/realtime_provider.dart';
 import '../data/dashboard_mock_repository.dart';
 import '../domain/dashboard_snapshot.dart' hide BatteryStatus;
@@ -69,7 +71,7 @@ class RoleDashboardPage extends StatelessWidget {
   }
 }
 
-class ConsumerDashboard extends StatelessWidget {
+class ConsumerDashboard extends ConsumerWidget {
   const ConsumerDashboard({
     required this.profile,
     required this.snapshot,
@@ -80,7 +82,16 @@ class ConsumerDashboard extends StatelessWidget {
   final DashboardSnapshot snapshot;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final purchases = ref.watch(purchasesListProvider).valueOrNull ?? const [];
+    final recentTotalKwh = purchases.fold<double>(
+      0.0,
+      (sum, p) => sum + p.quantityKwh,
+    );
+    final purchasesLabel = purchases.isNotEmpty
+        ? '${recentTotalKwh.toStringAsFixed(1)} kWh'
+        : '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh';
+
     return _RoleLayout(
       lead: _EnergyPanel(
         value: '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
@@ -129,7 +140,7 @@ class ConsumerDashboard extends StatelessWidget {
         ),
         _Metric(
           'Recent purchases',
-          '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
+          purchasesLabel,
           Icons.shopping_cart_outlined,
         ),
       ],
@@ -149,77 +160,84 @@ class ProducerDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _RoleLayout(
-      lead: _EnergyPanel(
-        value: '${snapshot.solarGenerationTodayKwh.toStringAsFixed(1)} kWh',
-        label: 'Generated today',
-        progress:
-            snapshot.solarGenerationTodayKwh /
-            DashboardMockRepository.dailyGenerationTargetKwh,
-        battery: snapshot,
-        actions: [
-          _Action(
-            'Create Listing',
-            Icons.add_circle_outline,
-            () => context.go(AppRoutes.createListing),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ProducerSmartMeterCard(),
+        const SizedBox(height: 18),
+        _RoleLayout(
+          lead: _EnergyPanel(
+            value: '${snapshot.solarGenerationTodayKwh.toStringAsFixed(1)} kWh',
+            label: 'Generated today',
+            progress:
+                snapshot.solarGenerationTodayKwh /
+                DashboardMockRepository.dailyGenerationTargetKwh,
+            battery: snapshot,
+            actions: [
+              _Action(
+                'Create Listing',
+                Icons.add_circle_outline,
+                () => context.go(AppRoutes.createListing),
+              ),
+              _Action(
+                'Manage Listings',
+                Icons.inventory_2_outlined,
+                () => context.go(AppRoutes.myListings),
+              ),
+              _Action(
+                'View Sales',
+                Icons.receipt_long_outlined,
+                () => context.go(AppRoutes.sales),
+              ),
+              _Action(
+                'Withdraw Earnings',
+                Icons.account_balance_outlined,
+                () => context.go(AppRoutes.withdraw),
+              ),
+            ],
           ),
-          _Action(
-            'Manage Listings',
-            Icons.inventory_2_outlined,
-            () => context.go(AppRoutes.myListings),
-          ),
-          _Action(
-            'View Sales',
-            Icons.receipt_long_outlined,
-            () => context.go(AppRoutes.sales),
-          ),
-          _Action(
-            'Withdraw Earnings',
-            Icons.account_balance_outlined,
-            () => context.go(AppRoutes.withdraw),
-          ),
-        ],
-      ),
-      metrics: [
-        _Metric(
-          'Current generation',
-          '${snapshot.currentSolarPowerKw.toStringAsFixed(1)} kW',
-          Icons.wb_sunny_outlined,
-        ),
-        _Metric(
-          'Available energy',
-          '${snapshot.availableToSellKwh.toStringAsFixed(1)} kWh',
-          Icons.flash_on_outlined,
-        ),
-        _Metric(
-          'Exported energy',
-          '${(snapshot.solarGenerationTodayKwh - snapshot.consumptionTodayKwh).clamp(0, 999).toStringAsFixed(1)} kWh',
-          Icons.upload_outlined,
-        ),
-        _Metric(
-          'Active listings',
-          '${snapshot.availableToSellKwh.toStringAsFixed(1)} kWh',
-          Icons.inventory_2_outlined,
-        ),
-        _Metric(
-          'Pending settlements',
-          'Rs ${(snapshot.availableToSellKwh * 4.1).toStringAsFixed(0)}',
-          Icons.lock_clock_outlined,
-        ),
-        _Metric(
-          'Today earnings',
-          'Rs ${(snapshot.availableToSellKwh * 8.2).toStringAsFixed(0)}',
-          Icons.trending_up_outlined,
-        ),
-        _Metric(
-          'Monthly earnings',
-          'Rs ${(snapshot.availableToSellKwh * 8.2 * 30).toStringAsFixed(0)}',
-          Icons.calendar_month_outlined,
-        ),
-        _Metric(
-          'Production efficiency',
-          '${snapshot.sustainabilityScore}%',
-          Icons.speed_outlined,
+          metrics: [
+            _Metric(
+              'Current generation',
+              '${snapshot.currentSolarPowerKw.toStringAsFixed(1)} kW',
+              Icons.wb_sunny_outlined,
+            ),
+            _Metric(
+              'Available energy',
+              '${snapshot.availableToSellKwh.toStringAsFixed(1)} kWh',
+              Icons.flash_on_outlined,
+            ),
+            _Metric(
+              'Exported energy',
+              '${(snapshot.solarGenerationTodayKwh - snapshot.consumptionTodayKwh).clamp(0, 999).toStringAsFixed(1)} kWh',
+              Icons.upload_outlined,
+            ),
+            _Metric(
+              'Active listings',
+              '${snapshot.availableToSellKwh.toStringAsFixed(1)} kWh',
+              Icons.inventory_2_outlined,
+            ),
+            _Metric(
+              'Pending settlements',
+              'Rs ${(snapshot.availableToSellKwh * 4.1).toStringAsFixed(0)}',
+              Icons.lock_clock_outlined,
+            ),
+            _Metric(
+              'Today earnings',
+              'Rs ${(snapshot.availableToSellKwh * 8.2).toStringAsFixed(0)}',
+              Icons.trending_up_outlined,
+            ),
+            _Metric(
+              'Monthly earnings',
+              'Rs ${(snapshot.availableToSellKwh * 8.2 * 30).toStringAsFixed(0)}',
+              Icons.calendar_month_outlined,
+            ),
+            _Metric(
+              'Production efficiency',
+              '${snapshot.sustainabilityScore}%',
+              Icons.speed_outlined,
+            ),
+          ],
         ),
       ],
     );

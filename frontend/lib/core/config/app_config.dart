@@ -12,6 +12,10 @@ class AppConfig {
     this.useMockBackend = false,
     this.eventServerUrl = '',
     this.aiMode = 'gemini',
+    this.smartMeterBaseUrl =
+        'https://startathon-voltshare-smartmeter.onrender.com',
+    this.smartMeterProducerPath = '/meter-metrics/producer',
+    this.meterProvider = 'external_api',
   });
 
   factory AppConfig.fromEnvironment() {
@@ -30,6 +34,18 @@ class AppConfig {
         defaultValue: false,
       ),
       aiMode: String.fromEnvironment('AI_MODE', defaultValue: 'gemini'),
+      smartMeterBaseUrl: String.fromEnvironment(
+        'SMART_METER_BASE_URL',
+        defaultValue: 'https://startathon-voltshare-smartmeter.onrender.com',
+      ),
+      smartMeterProducerPath: String.fromEnvironment(
+        'SMART_METER_PRODUCER_PATH',
+        defaultValue: '/meter-metrics/producer',
+      ),
+      meterProvider: String.fromEnvironment(
+        'METER_PROVIDER',
+        defaultValue: 'external_api',
+      ),
     );
   }
 
@@ -39,6 +55,9 @@ class AppConfig {
   final bool useMockBackend;
   final String eventServerUrl;
   final String aiMode;
+  final String smartMeterBaseUrl;
+  final String smartMeterProducerPath;
+  final String meterProvider;
 
   bool get isSupabaseConfigured {
     return supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
@@ -51,4 +70,7 @@ class AppConfig {
   bool get isAiEnabled => aiMode.toLowerCase() != 'disabled';
 
   bool get isGeminiAiMode => aiMode.toLowerCase() == 'gemini';
+
+  bool get isExternalMeterProvider =>
+      meterProvider.toLowerCase() == 'external_api';
 }
