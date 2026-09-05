@@ -24,6 +24,8 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   );
 });
 
+final mockUserSessionProvider = StateProvider<UserProfile?>((ref) => null);
+
 final authSessionStreamProvider = StreamProvider<Session?>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   if (!repository.isConfigured) {
@@ -39,6 +41,23 @@ final authSessionStreamProvider = StreamProvider<Session?>((ref) {
 });
 
 final currentSessionProvider = Provider<Session?>((ref) {
+  final mockUser = ref.watch(mockUserSessionProvider);
+  if (mockUser != null) {
+    return Session(
+      accessToken: 'mock-token-${mockUser.id}',
+      tokenType: 'bearer',
+      user: User(
+        id: mockUser.id,
+        appMetadata: const {},
+        userMetadata: {
+          'full_name': mockUser.fullName,
+          'role': mockUser.role.value,
+        },
+        aud: 'authenticated',
+        createdAt: DateTime.now().toIso8601String(),
+      ),
+    );
+  }
   final repository = ref.watch(authRepositoryProvider);
   final streamSession = ref.watch(authSessionStreamProvider);
   return streamSession.when(
@@ -49,25 +68,51 @@ final currentSessionProvider = Provider<Session?>((ref) {
 });
 
 final currentProfileProvider = FutureProvider<UserProfile?>((ref) async {
+  final mockUser = ref.watch(mockUserSessionProvider);
+  if (mockUser != null) {
+    return mockUser;
+  }
   final repository = ref.watch(authRepositoryProvider);
   final session = ref.watch(currentSessionProvider);
   if (session == null || !repository.isConfigured) {
-    if (ref.watch(appConfigProvider).isMockMode) {
-      return UserProfile(
-        id: 'producer-1',
-        email: 'ravi@voltshare-demo.local',
-        fullName: 'Ravi Kumar',
-        phone: '+91 9876543210',
-        role: UserRole.prosumer,
-        city: 'Kochi',
-        district: 'Ernakulam',
-        state: 'Kerala',
-      );
-    }
     return null;
   }
   return repository.fetchProfile(session.user.id);
 });
+
+UserProfile resolveMockUserProfile({
+  required String email,
+  UserRole? role,
+  String? fullName,
+}) {
+  final lower = email.toLowerCase().trim();
+  final resolvedRole =
+      role ??
+      (lower.contains('admin')
+          ? UserRole.admin
+          : lower.contains('consumer')
+          ? UserRole.consumer
+          : UserRole.producer);
+
+  final name =
+      fullName ??
+      (resolvedRole == UserRole.admin
+          ? 'Admin Officer'
+          : resolvedRole == UserRole.consumer
+          ? 'Ananya Sharma'
+          : 'Ravi Kumar');
+
+  return UserProfile(
+    id: 'mock-${resolvedRole.value}-1',
+    email: email.trim().isEmpty ? 'demo@voltshare.in' : email.trim(),
+    fullName: name,
+    phone: '+91 9876543210',
+    role: resolvedRole,
+    city: 'Kochi',
+    district: 'Ernakulam',
+    state: 'Kerala',
+  );
+}
 
 class AuthRepository {
   const AuthRepository({
@@ -165,12 +210,15 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
-    try {
-      await _requiredClient.auth.signOut();
-    } on AuthException catch (error) {
-      throw AppException(_friendlyAuthMessage(error.message));
-    } catch (error) {
-      throw AppException(_friendlyAuthMessage(error.toString()));
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.auth.signOut();
+      } on AuthException catch (error) {
+        throw AppException(_friendlyAuthMessage(error.message));
+      } catch (_) {
+        // Ignored if local session is already cleared or network unavailable
+      }
     }
   }
 

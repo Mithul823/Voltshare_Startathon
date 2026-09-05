@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
 
-    financial_database_url: str = ""
+    financial_database_url: str = Field(
+        default="sqlite:///data/financial_records.db",
+        validation_alias="FINANCIAL_DATABASE_URL",
+    )
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""

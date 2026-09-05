@@ -5,7 +5,11 @@ import 'package:http/http.dart' as http;
 
 import '../../authentication/data/auth_repository.dart';
 import '../../authentication/domain/user_role.dart';
+import '../../dashboard/providers/dashboard_provider.dart';
 import '../../escrow/providers/escrow_provider.dart';
+import '../../notifications/providers/notification_provider.dart';
+import '../../purchases/data/purchases_repository.dart';
+import '../../sales/data/sales_provider.dart';
 import '../../wallet/providers/wallet_provider.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client.dart';
@@ -59,10 +63,7 @@ final marketplaceRepositoryProvider = Provider<MarketplaceRepository>((ref) {
   if (ref.watch(appConfigProvider).isLiveMode) {
     return MarketplaceApiRepository(ref.watch(apiClientProvider));
   }
-  // In mock mode, use the mock API repository that posts/gets listings
-  // from the backend's /mock/listings endpoint with automatic in-memory fallback.
-  return MarketplaceMockApiRepository(
-    baseUrl: ref.watch(appConfigProvider).apiBaseUrl,
+  return MarketplaceMockRepository(
     currentUserId: _currentUserId(ref),
     currentUserRole: _currentUserRole(ref),
     currentUserName: _currentUserName(ref),
@@ -176,6 +177,11 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
       _ref.read(latestPurchaseProvider.notifier).state = purchase;
       _ref.invalidate(marketplaceListingsProvider);
       _ref.invalidate(myListingsProvider);
+      _ref.invalidate(purchasesListProvider);
+      _ref.invalidate(salesProvider);
+      _ref.invalidate(dashboardProvider);
+      _ref.invalidate(notificationsProvider);
+      _ref.invalidate(unreadNotificationsProvider);
       state = AsyncValue.data(purchase);
       _sendSpeechHomeRight(purchase.unitPrice);
       _sendSellEvent(purchase.unitPrice, purchase.quantityKwh);

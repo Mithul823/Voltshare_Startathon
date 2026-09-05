@@ -7,10 +7,19 @@ import '../data/ai_repository.dart';
 import '../domain/ai_models.dart';
 
 final aiRepositoryProvider = Provider<AiRepository>((ref) {
-  if (ref.watch(appConfigProvider).isMockMode) {
+  final config = ref.watch(appConfigProvider);
+  if (!config.isAiEnabled) {
     return const AiMockRepository();
   }
-  return AiApiRepository(ref.watch(apiClientProvider));
+  if (!config.isMockMode) {
+    return AiApiRepository(ref.watch(apiClientProvider));
+  }
+  if (config.aiMode == 'rule_based') {
+    return const AiMockRepository();
+  }
+  return GeminiHybridAiRepository(
+    AiApiRepository(ref.watch(apiClientProvider)),
+  );
 });
 
 final aiRecommendationsProvider = FutureProvider<List<RecommendationItem>>((

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/widgets/error_message.dart';
 import '../data/auth_repository.dart';
+import '../domain/user_role.dart';
 import 'auth_form_helpers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -39,6 +41,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
 
+    final isMock = ref.read(appConfigProvider).isMockMode;
+
     try {
       await ref
           .read(authRepositoryProvider)
@@ -50,7 +54,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go(AppRoutes.dashboard);
       }
     } on AppException catch (error) {
-      setState(() => _error = error.message);
+      if (isMock) {
+        final mockProfile = resolveMockUserProfile(
+          email: _emailController.text,
+        );
+        ref.read(mockUserSessionProvider.notifier).state = mockProfile;
+        if (mounted) {
+          context.go(AppRoutes.dashboard);
+        }
+      } else {
+        setState(() => _error = error.message);
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

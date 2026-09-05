@@ -11,6 +11,7 @@ class AppConfig {
     this.apiBaseUrl = 'http://10.0.2.2:8000/api/v1',
     this.useMockBackend = false,
     this.eventServerUrl = '',
+    this.aiMode = 'gemini',
   });
 
   factory AppConfig.fromEnvironment() {
@@ -28,6 +29,7 @@ class AppConfig {
         'USE_MOCK_BACKEND',
         defaultValue: false,
       ),
+      aiMode: String.fromEnvironment('AI_MODE', defaultValue: 'gemini'),
     );
   }
 
@@ -36,6 +38,7 @@ class AppConfig {
   final String apiBaseUrl;
   final bool useMockBackend;
   final String eventServerUrl;
+  final String aiMode;
 
   bool get isSupabaseConfigured {
     return supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
@@ -44,4 +47,8 @@ class AppConfig {
   bool get isMockMode => useMockBackend;
 
   bool get isLiveMode => !useMockBackend;
+
+  bool get isAiEnabled => aiMode.toLowerCase() != 'disabled';
+
+  bool get isGeminiAiMode => aiMode.toLowerCase() == 'gemini';
 }

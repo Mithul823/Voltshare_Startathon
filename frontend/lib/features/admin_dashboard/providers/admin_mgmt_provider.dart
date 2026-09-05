@@ -8,13 +8,16 @@ import '../data/admin_mgmt_repository.dart';
 sealed class AdminUsersState {
   const AdminUsersState();
 }
+
 class AdminUsersLoading extends AdminUsersState {
   const AdminUsersLoading();
 }
+
 class AdminUsersSuccess extends AdminUsersState {
   const AdminUsersSuccess(this.data);
   final PaginatedAdminUsers data;
 }
+
 class AdminUsersError extends AdminUsersState {
   const AdminUsersError(this.message);
   final String message;
@@ -24,13 +27,16 @@ class AdminUsersError extends AdminUsersState {
 sealed class AdminDisputesState {
   const AdminDisputesState();
 }
+
 class AdminDisputesLoading extends AdminDisputesState {
   const AdminDisputesLoading();
 }
+
 class AdminDisputesSuccess extends AdminDisputesState {
   const AdminDisputesSuccess(this.data);
   final PaginatedAdminDisputes data;
 }
+
 class AdminDisputesError extends AdminDisputesState {
   const AdminDisputesError(this.message);
   final String message;
@@ -40,23 +46,27 @@ class AdminDisputesError extends AdminDisputesState {
 sealed class AdminAuditState {
   const AdminAuditState();
 }
+
 class AdminAuditLoading extends AdminAuditState {
   const AdminAuditLoading();
 }
+
 class AdminAuditSuccess extends AdminAuditState {
   const AdminAuditSuccess(this.data);
   final PaginatedAuditLogs data;
 }
+
 class AdminAuditError extends AdminAuditState {
   const AdminAuditError(this.message);
   final String message;
 }
 
 /// Provider for admin users list.
-final adminUsersProvider = StateNotifierProvider<AdminUsersNotifier, AdminUsersState>((ref) {
-  final repository = ref.watch(adminMgmtRepositoryProvider);
-  return AdminUsersNotifier(repository)..load();
-});
+final adminUsersProvider =
+    StateNotifierProvider<AdminUsersNotifier, AdminUsersState>((ref) {
+      final repository = ref.watch(adminMgmtRepositoryProvider);
+      return AdminUsersNotifier(repository)..load();
+    });
 
 class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
   AdminUsersNotifier(this._repository) : super(const AdminUsersLoading());
@@ -71,7 +81,13 @@ class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
     int page = 1,
   }) async {
     state = const AdminUsersLoading();
-    await _fetch(search: search, role: role, status: status, kycStatus: kycStatus, page: page);
+    await _fetch(
+      search: search,
+      role: role,
+      status: status,
+      kycStatus: kycStatus,
+      page: page,
+    );
   }
 
   Future<void> refresh() async {
@@ -85,7 +101,13 @@ class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
     String? kycStatus,
     int page = 1,
   }) async {
-    await _fetch(search: search, role: role, status: status, kycStatus: kycStatus, page: page);
+    await _fetch(
+      search: search,
+      role: role,
+      status: status,
+      kycStatus: kycStatus,
+      page: page,
+    );
   }
 
   Future<void> _fetch({
@@ -111,10 +133,29 @@ class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
     }
   }
 
+  Future<void> suspendUser(String userId) async {
+    try {
+      await _repository.suspendUser(userId);
+      await refresh();
+    } catch (error) {
+      state = AdminUsersError(_mapError(error));
+    }
+  }
+
+  Future<void> reactivateUser(String userId) async {
+    try {
+      await _repository.reactivateUser(userId);
+      await refresh();
+    } catch (error) {
+      state = AdminUsersError(_mapError(error));
+    }
+  }
+
   String _mapError(Object error) {
     if (error is ApiException) {
       return switch (error.code) {
-        'AUTH_REQUIRED' || 'AUTH_INVALID_TOKEN' => 'Your session expired. Please sign in again.',
+        'AUTH_REQUIRED' ||
+        'AUTH_INVALID_TOKEN' => 'Your session expired. Please sign in again.',
         'ACCESS_DENIED' => 'Administrator access is required.',
         'NETWORK_ERROR' || 'TIMEOUT' => 'No internet connection',
         _ => 'Could not load users.',
@@ -125,10 +166,11 @@ class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
 }
 
 /// Provider for admin disputes list.
-final adminDisputesProvider = StateNotifierProvider<AdminDisputesNotifier, AdminDisputesState>((ref) {
-  final repository = ref.watch(adminMgmtRepositoryProvider);
-  return AdminDisputesNotifier(repository)..load();
-});
+final adminDisputesProvider =
+    StateNotifierProvider<AdminDisputesNotifier, AdminDisputesState>((ref) {
+      final repository = ref.watch(adminMgmtRepositoryProvider);
+      return AdminDisputesNotifier(repository)..load();
+    });
 
 class AdminDisputesNotifier extends StateNotifier<AdminDisputesState> {
   AdminDisputesNotifier(this._repository) : super(const AdminDisputesLoading());
@@ -143,7 +185,13 @@ class AdminDisputesNotifier extends StateNotifier<AdminDisputesState> {
     int page = 1,
   }) async {
     state = const AdminDisputesLoading();
-    await _fetch(status: status, priority: priority, buyerId: buyerId, sellerId: sellerId, page: page);
+    await _fetch(
+      status: status,
+      priority: priority,
+      buyerId: buyerId,
+      sellerId: sellerId,
+      page: page,
+    );
   }
 
   Future<void> refresh() async {
@@ -174,7 +222,8 @@ class AdminDisputesNotifier extends StateNotifier<AdminDisputesState> {
   }
 
   Future<DisputeActionResponse> resolveDispute(
-    String disputeId, DisputeResolutionRequest request,
+    String disputeId,
+    DisputeResolutionRequest request,
   ) async {
     try {
       final result = await _repository.resolveDispute(disputeId, request);
@@ -186,7 +235,8 @@ class AdminDisputesNotifier extends StateNotifier<AdminDisputesState> {
   }
 
   Future<DisputeActionResponse> rejectDispute(
-    String disputeId, DisputeResolutionRequest request,
+    String disputeId,
+    DisputeResolutionRequest request,
   ) async {
     try {
       final result = await _repository.rejectDispute(disputeId, request);
@@ -210,7 +260,8 @@ class AdminDisputesNotifier extends StateNotifier<AdminDisputesState> {
   String _mapError(Object error) {
     if (error is ApiException) {
       return switch (error.code) {
-        'AUTH_REQUIRED' || 'AUTH_INVALID_TOKEN' => 'Your session expired. Please sign in again.',
+        'AUTH_REQUIRED' ||
+        'AUTH_INVALID_TOKEN' => 'Your session expired. Please sign in again.',
         'ACCESS_DENIED' => 'Administrator access is required.',
         'NETWORK_ERROR' || 'TIMEOUT' => 'No internet connection',
         _ => 'Could not load disputes.',
@@ -221,10 +272,11 @@ class AdminDisputesNotifier extends StateNotifier<AdminDisputesState> {
 }
 
 /// Provider for admin audit logs.
-final adminAuditProvider = StateNotifierProvider<AdminAuditNotifier, AdminAuditState>((ref) {
-  final repository = ref.watch(adminMgmtRepositoryProvider);
-  return AdminAuditNotifier(repository)..load();
-});
+final adminAuditProvider =
+    StateNotifierProvider<AdminAuditNotifier, AdminAuditState>((ref) {
+      final repository = ref.watch(adminMgmtRepositoryProvider);
+      return AdminAuditNotifier(repository)..load();
+    });
 
 class AdminAuditNotifier extends StateNotifier<AdminAuditState> {
   AdminAuditNotifier(this._repository) : super(const AdminAuditLoading());
@@ -282,7 +334,8 @@ class AdminAuditNotifier extends StateNotifier<AdminAuditState> {
   String _mapError(Object error) {
     if (error is ApiException) {
       return switch (error.code) {
-        'AUTH_REQUIRED' || 'AUTH_INVALID_TOKEN' => 'Your session expired. Please sign in again.',
+        'AUTH_REQUIRED' ||
+        'AUTH_INVALID_TOKEN' => 'Your session expired. Please sign in again.',
         'ACCESS_DENIED' => 'Administrator access is required.',
         'NETWORK_ERROR' || 'TIMEOUT' => 'No internet connection',
         _ => 'Could not load audit logs.',

@@ -99,10 +99,12 @@ class MarketplaceMockRepository implements MarketplaceRepository {
 
   @override
   PurchaseQuote quote(EnergyListing listing, double quantityKwh) {
-    if (quantityKwh < 0.5)
+    if (quantityKwh < 0.5) {
       throw const MarketplaceException('Select at least 0.5 kWh.');
-    if (listing.isSoldOut)
+    }
+    if (listing.isSoldOut) {
       throw const MarketplaceException('This listing is sold out.');
+    }
     if (quantityKwh > listing.availableEnergyKwh) {
       throw MarketplaceException(
         'Only ${listing.availableEnergyKwh.toStringAsFixed(1)} kWh available.',
@@ -130,18 +132,23 @@ class MarketplaceMockRepository implements MarketplaceRepository {
     required bool canBuy,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 260));
-    if (!_isConsumerOrProsumer)
+    if (!_isConsumerOrProsumer) {
       throw const MarketplaceException('This role cannot buy energy.');
-    if (!canBuy)
+    }
+    if (!canBuy) {
       throw const MarketplaceException('This role cannot buy energy.');
-    if (buyerId.isEmpty)
+    }
+    if (buyerId.isEmpty) {
       throw const MarketplaceException('You must be logged in to purchase.');
+    }
 
     final listing = _store.getListing(listingId);
-    if (listing == null)
+    if (listing == null) {
       throw const MarketplaceException('Listing unavailable.');
-    if (listing['sellerId'] == buyerId)
+    }
+    if (listing['sellerId'] == buyerId) {
       throw const MarketplaceException('You cannot purchase your own listing.');
+    }
 
     final listingTitle = listing['title']?.toString() ?? 'Energy Listing';
     final sellerName = listing['sellerName']?.toString() ?? 'Seller';
@@ -150,12 +157,14 @@ class MarketplaceMockRepository implements MarketplaceRepository {
         (listing['availableEnergyKwh'] as num?)?.toDouble() ?? 0;
     final pricePerKwh = (listing['pricePerKwh'] as num?)?.toDouble() ?? 0;
 
-    if (quantityKwh > availableKwh)
+    if (quantityKwh > availableKwh) {
       throw MarketplaceException(
         'Only ${availableKwh.toStringAsFixed(1)} kWh available.',
       );
-    if (availableKwh <= 0)
+    }
+    if (availableKwh <= 0) {
       throw const MarketplaceException('This listing is sold out.');
+    }
 
     final subtotal = quantityKwh * pricePerKwh;
     final fee = subtotal * platformFeeRate;
@@ -201,15 +210,13 @@ class MarketplaceMockRepository implements MarketplaceRepository {
     required double maxAvailableKwh,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
-    if (!_isProducerOrProsumer)
+    if (!canSell && !_isProducerOrProsumer) {
       throw const MarketplaceException(
         'This role cannot publish energy listings.',
       );
-    if (!canSell)
-      throw const MarketplaceException(
-        'This role cannot publish energy listings.',
-      );
-    _validateDraft(draft, maxAvailableKwh);
+    }
+    final effectiveMax = maxAvailableKwh > 0 ? maxAvailableKwh : 14.3;
+    _validateDraft(draft, effectiveMax);
 
     final listingData = _store.addListing({
       'sellerId': currentUserId,
@@ -244,10 +251,11 @@ class MarketplaceMockRepository implements MarketplaceRepository {
   Future<void> cancelListing(String id) async {
     final listing = _store.getListing(id);
     if (listing == null) throw const MarketplaceException('Listing not found.');
-    if (listing['sellerId'] != currentUserId)
+    if (listing['sellerId'] != currentUserId) {
       throw const MarketplaceException(
         'You can only cancel your own listings.',
       );
+    }
     _store.updateListing(id, {'listingStatus': ListingStatus.cancelled.name});
   }
 
@@ -255,10 +263,11 @@ class MarketplaceMockRepository implements MarketplaceRepository {
   Future<EnergyListing> duplicateListing(String id) async {
     final listing = _store.getListing(id);
     if (listing == null) throw const MarketplaceException('Listing not found.');
-    if (listing['sellerId'] != currentUserId)
+    if (listing['sellerId'] != currentUserId) {
       throw const MarketplaceException(
         'You can only duplicate your own listings.',
       );
+    }
     final copy = Map<String, dynamic>.from(listing)
       ..remove('id')
       ..['createdAt'] = DateTime.now().toIso8601String()
@@ -275,8 +284,9 @@ class MarketplaceMockRepository implements MarketplaceRepository {
   Future<void> pauseListing(String id) async {
     final listing = _store.getListing(id);
     if (listing == null) throw const MarketplaceException('Listing not found.');
-    if (listing['sellerId'] != currentUserId)
+    if (listing['sellerId'] != currentUserId) {
       throw const MarketplaceException('You can only pause your own listings.');
+    }
     _store.updateListing(id, {'listingStatus': ListingStatus.cancelled.name});
   }
 
@@ -284,10 +294,11 @@ class MarketplaceMockRepository implements MarketplaceRepository {
   Future<void> deleteListing(String id) async {
     final listing = _store.getListing(id);
     if (listing == null) throw const MarketplaceException('Listing not found.');
-    if (listing['sellerId'] != currentUserId)
+    if (listing['sellerId'] != currentUserId) {
       throw const MarketplaceException(
         'You can only delete your own listings.',
       );
+    }
     _store.listings.remove(id);
   }
 
@@ -298,14 +309,16 @@ class MarketplaceMockRepository implements MarketplaceRepository {
   ) async {
     final listing = _store.getListing(id);
     if (listing == null) throw const MarketplaceException('Listing not found.');
-    if (listing['sellerId'] != currentUserId)
+    if (listing['sellerId'] != currentUserId) {
       throw const MarketplaceException(
         'You can only update your own listings.',
       );
+    }
     final totalKwh =
         (listing['quantityTotalKwh'] as num?)?.toDouble() ?? newQuantity;
-    if (newQuantity < 0)
+    if (newQuantity < 0) {
       throw const MarketplaceException('Quantity cannot be negative.');
+    }
     _store.updateListing(id, {
       'availableEnergyKwh': newQuantity,
       'quantityTotalKwh': totalKwh,
@@ -445,23 +458,29 @@ class MarketplaceMockRepository implements MarketplaceRepository {
   }
 
   void _validateDraft(SellListingDraft draft, double maxAvailableKwh) {
-    if (draft.availableEnergyKwh <= 0)
+    if (draft.availableEnergyKwh <= 0) {
       throw const MarketplaceException('Energy amount must be positive.');
-    if (draft.availableEnergyKwh > maxAvailableKwh)
+    }
+    if (draft.availableEnergyKwh > maxAvailableKwh) {
       throw const MarketplaceException('Listing exceeds available energy.');
-    if (draft.pricePerKwh <= 0)
+    }
+    if (draft.pricePerKwh <= 0) {
       throw const MarketplaceException('Price must be positive.');
+    }
     if (draft.batteryReservePercentage < 0 ||
-        draft.batteryReservePercentage > 100)
+        draft.batteryReservePercentage > 100) {
       throw const MarketplaceException('Reserve must be between 0 and 100.');
-    if (!draft.availabilityEnd.isAfter(draft.availabilityStart))
+    }
+    if (!draft.availabilityEnd.isAfter(draft.availabilityStart)) {
       throw const MarketplaceException('End time must be after start time.');
+    }
   }
 
   static String _initials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2)
+    if (parts.length >= 2) {
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 

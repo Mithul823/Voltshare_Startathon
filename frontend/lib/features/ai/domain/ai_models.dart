@@ -160,6 +160,8 @@ class PricingSuggestionModel {
     required this.supplyLevel,
     required this.confidence,
     required this.reason,
+    this.source = 'GEMINI',
+    this.fallbackUsed = false,
   });
 
   final double suggestedPrice;
@@ -170,6 +172,8 @@ class PricingSuggestionModel {
   final String supplyLevel;
   final double confidence;
   final String reason;
+  final String source;
+  final bool fallbackUsed;
 
   factory PricingSuggestionModel.fromJson(Map<String, Object?> json) {
     return PricingSuggestionModel(
@@ -204,6 +208,11 @@ class PricingSuggestionModel {
           '',
       confidence: ((json['confidence'] as num?) ?? 0).toDouble(),
       reason: json['reason']?.toString() ?? '',
+      source:
+          json['source']?.toString() ??
+          (json['fallback_used'] == true ? 'RULE_BASED' : 'GEMINI'),
+      fallbackUsed:
+          json['fallback_used'] == true || json['fallbackUsed'] == true,
     );
   }
 }
@@ -237,7 +246,8 @@ class AssistantResponseModel {
           json['fallback_used'] == true || json['fallbackUsed'] == true,
       model: json['model']?.toString(),
       fallbackReason:
-          json['fallback_reason']?.toString() ?? json['fallbackReason']?.toString(),
+          json['fallback_reason']?.toString() ??
+          json['fallbackReason']?.toString(),
     );
   }
 }

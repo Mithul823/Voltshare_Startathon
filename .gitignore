@@ -18,6 +18,10 @@ ENV/
 htmlcov/
 dist/
 *.egg-info/
+tmp_test/
+backend/tmp_test/
+backend/data/
+data/
 
 # Flutter & Dart
 .dart_tool/

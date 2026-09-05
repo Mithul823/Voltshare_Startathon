@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/widgets/voltshare_ui.dart';
 import '../../ai/presentation/ai_widgets.dart';
 import '../../dashboard/providers/dashboard_provider.dart';
@@ -40,8 +41,14 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final maxEnergy =
-        ref.watch(dashboardProvider).valueOrNull?.availableToSellKwh ?? 8.5;
+    final dashboardMax = ref
+        .watch(dashboardProvider)
+        .valueOrNull
+        ?.availableToSellKwh;
+    final isMock = ref.watch(appConfigProvider).isMockMode;
+    final maxEnergy = (dashboardMax != null && dashboardMax > 0)
+        ? dashboardMax
+        : (isMock ? 14.3 : (dashboardMax ?? 8.5));
     final state = ref.watch(sellListingControllerProvider);
     return Scaffold(
       body: ResponsivePage(
@@ -68,8 +75,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Energy amount (kWh)',
                       ),
-                      keyboardType: TextInputType.number,
-                      validator: _positive,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (v) => _amountValidator(v, maxEnergy),
+                      onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -77,8 +87,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Price per kWh',
                       ),
-                      keyboardType: TextInputType.number,
-                      validator: _positive,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: _priceValidator,
+                      onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<EnergySource>(
@@ -161,10 +174,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          state.error
-                              .toString()
-                              .replaceAll('Exception: ', '')
-                              .replaceAll('MarketplaceException: ', ''),
+                          _friendlyError(state.error!),
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.error,
                             fontSize: 13,
@@ -201,8 +211,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                             );
                         if (context.mounted && listing != null) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Listing published successfully.'),
+                            SnackBar(
+                              content: Text(
+                                '${listing.availableEnergyKwh.toStringAsFixed(1)} kWh listed successfully.',
+                              ),
                             ),
                           );
                           context.go(AppRoutes.myListings);
@@ -216,9 +228,33 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     );
   }
 
-  String? _positive(String? value) {
+  String _friendlyError(Object error) {
+    final str = error.toString();
+    if (str.contains('TimeoutException') || str.contains('timeout')) {
+      return "We couldn't publish this listing. Please try again.";
+    }
+    return str
+        .replaceAll('Exception: ', '')
+        .replaceAll('MarketplaceException: ', '')
+        .trim();
+  }
+
+  String? _amountValidator(String? value, double maxAvailableKwh) {
     final parsed = double.tryParse(value ?? '');
-    if (parsed == null || parsed <= 0) return 'Enter a positive value';
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed <= 0) {
+      return 'Enter a positive value';
+    }
+    if (parsed > maxAvailableKwh) {
+      return 'Only ${maxAvailableKwh.toStringAsFixed(1)} kWh is currently available to list.';
+    }
+    return null;
+  }
+
+  String? _priceValidator(String? value) {
+    final parsed = double.tryParse(value ?? '');
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed <= 0) {
+      return 'Enter a positive price';
+    }
     return null;
   }
 

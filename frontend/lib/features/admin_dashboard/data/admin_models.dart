@@ -51,6 +51,40 @@ class AdminUserSummary {
   final int purchasesCount;
   final int disputesCount;
 
+  AdminUserSummary copyWith({
+    String? id,
+    String? fullName,
+    String? email,
+    String? role,
+    bool? isActive,
+    bool? emailVerified,
+    String? kycStatus,
+    String? city,
+    String? district,
+    DateTime? createdAt,
+    DateTime? lastLoginAt,
+    int? listingsCount,
+    int? purchasesCount,
+    int? disputesCount,
+  }) {
+    return AdminUserSummary(
+      id: id ?? this.id,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      isActive: isActive ?? this.isActive,
+      emailVerified: emailVerified ?? this.emailVerified,
+      kycStatus: kycStatus ?? this.kycStatus,
+      city: city ?? this.city,
+      district: district ?? this.district,
+      createdAt: createdAt ?? this.createdAt,
+      lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      listingsCount: listingsCount ?? this.listingsCount,
+      purchasesCount: purchasesCount ?? this.purchasesCount,
+      disputesCount: disputesCount ?? this.disputesCount,
+    );
+  }
+
   String get initials {
     final parts = fullName.trim().split(RegExp(r'\s+'));
     if (parts.length >= 2) {
@@ -69,7 +103,10 @@ class AdminUserSummary {
 
   static DateTime? _parseDt(Object? val) {
     if (val == null) return null;
-    if (val is String) return DateTime.tryParse(val.replaceAll('Z', '+00:00').replaceAll('+00:00+00:00', '+00:00'));
+    if (val is String)
+      return DateTime.tryParse(
+        val.replaceAll('Z', '+00:00').replaceAll('+00:00+00:00', '+00:00'),
+      );
     if (val is DateTime) return val;
     return null;
   }
@@ -88,7 +125,8 @@ class PaginatedAdminUsers {
   });
 
   factory PaginatedAdminUsers.fromJson(Map<String, Object?> json) {
-    final itemsList = (json['items'] as List<Object?>?)
+    final itemsList =
+        (json['items'] as List<Object?>?)
             ?.map((e) => AdminUserSummary.fromJson(e as Map<String, Object?>))
             .toList() ??
         [];
@@ -170,7 +208,10 @@ class AdminDisputeSummary {
 
   static DateTime? _parseDt(Object? val) {
     if (val == null) return null;
-    if (val is String) return DateTime.tryParse(val.replaceAll('Z', '+00:00').replaceAll('+00:00+00:00', '+00:00'));
+    if (val is String)
+      return DateTime.tryParse(
+        val.replaceAll('Z', '+00:00').replaceAll('+00:00+00:00', '+00:00'),
+      );
     if (val is DateTime) return val;
     return null;
   }
@@ -189,8 +230,11 @@ class PaginatedAdminDisputes {
   });
 
   factory PaginatedAdminDisputes.fromJson(Map<String, Object?> json) {
-    final itemsList = (json['items'] as List<Object?>?)
-            ?.map((e) => AdminDisputeSummary.fromJson(e as Map<String, Object?>))
+    final itemsList =
+        (json['items'] as List<Object?>?)
+            ?.map(
+              (e) => AdminDisputeSummary.fromJson(e as Map<String, Object?>),
+            )
             .toList() ??
         [];
     return PaginatedAdminDisputes(
@@ -224,11 +268,11 @@ class DisputeResolutionRequest {
   });
 
   Map<String, Object?> toJson() => {
-        'resolution': resolution,
-        'reason': reason,
-        'refund_amount_paise': refundAmountPaise,
-        'release_to_seller_paise': releaseToSellerPaise,
-      };
+    'resolution': resolution,
+    'reason': reason,
+    'refund_amount_paise': refundAmountPaise,
+    'release_to_seller_paise': releaseToSellerPaise,
+  };
 
   final String resolution;
   final String reason;
@@ -312,7 +356,10 @@ class AdminAuditLog {
 
   static DateTime? _parseDt(Object? val) {
     if (val == null) return null;
-    if (val is String) return DateTime.tryParse(val.replaceAll('Z', '+00:00').replaceAll('+00:00+00:00', '+00:00'));
+    if (val is String)
+      return DateTime.tryParse(
+        val.replaceAll('Z', '+00:00').replaceAll('+00:00+00:00', '+00:00'),
+      );
     if (val is DateTime) return val;
     return null;
   }
@@ -329,7 +376,8 @@ class PaginatedAuditLogs {
   });
 
   factory PaginatedAuditLogs.fromJson(Map<String, Object?> json) {
-    final itemsList = (json['items'] as List<Object?>?)
+    final itemsList =
+        (json['items'] as List<Object?>?)
             ?.map((e) => AdminAuditLog.fromJson(e as Map<String, Object?>))
             .toList() ??
         [];

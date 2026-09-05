@@ -146,7 +146,9 @@ class AiMockRepository implements AiRepository {
       demandLevel: 'medium',
       supplyLevel: 'balanced',
       confidence: 0.72,
-      reason: 'Mock advisory price based on marketplace average.',
+      reason: 'Rule-based advisory estimate.',
+      source: 'RULE_BASED',
+      fallbackUsed: true,
     );
   }
 
@@ -159,18 +161,23 @@ class AiMockRepository implements AiRepository {
     return AssistantResponseModel(
       answer: answer,
       provider: 'gemini',
-      model: 'gemini-2.5-flash',
       confidence: 0.82,
-      disclaimer: 'AI guidance is advisory. Forecasts are estimates and actions require your confirmation.',
+      disclaimer:
+          'AI guidance is advisory. Forecasts are estimates and actions require your confirmation.',
       fallbackUsed: false,
-      fallbackReason: null,
+      model: 'gemini-2.5-flash',
     );
   }
 
   String _simulateAiResponse(String question) {
     // Energy / dashboard questions
     if (_matchesAny(question, [
-      'energy', 'dashboard', 'power', 'solar', 'generation', 'producing',
+      'energy',
+      'dashboard',
+      'power',
+      'solar',
+      'generation',
+      'producing',
     ])) {
       return 'Based on your current solar generation profile, your system is producing approximately 4.2 kW with consumption at 1.8 kW. '
           'In the last 24 hours you generated 32.5 kWh and consumed 18.2 kWh, saving roughly 18.6 kg CO₂. '
@@ -188,8 +195,16 @@ class AiMockRepository implements AiRepository {
 
     // Wallet / cost questions
     if (_matchesAny(question, [
-      'wallet', 'cost', 'balance', 'money', 'spend', 'earn', 'price', 'paid',
-      'income', 'revenue',
+      'wallet',
+      'cost',
+      'balance',
+      'money',
+      'spend',
+      'earn',
+      'price',
+      'paid',
+      'income',
+      'revenue',
     ])) {
       return 'Your wallet currently has ₹845.50 available. This balance reflects your energy trading and any deposits you have made.\n\n'
           'To add funds, use the Wallet screen where you can deposit via UPI or Bank transfer. '
@@ -199,8 +214,14 @@ class AiMockRepository implements AiRepository {
 
     // Marketplace / trading questions
     if (_matchesAny(question, [
-      'sell', 'list', 'marketplace', 'trade', 'buy', 'purchase',
-      'listing', 'surplus',
+      'sell',
+      'list',
+      'marketplace',
+      'trade',
+      'buy',
+      'purchase',
+      'listing',
+      'surplus',
     ])) {
       return 'The marketplace currently has several active listings with prices ranging from ₹4.50 to ₹8.20 per kWh. '
           'Solar and wind energy from Kochi and Idukki are available right now.\n\n'
@@ -211,7 +232,13 @@ class AiMockRepository implements AiRepository {
 
     // Carbon / sustainability questions
     if (_matchesAny(question, [
-      'carbon', 'sustain', 'green', 'environment', 'co2', 'eco', 'climate',
+      'carbon',
+      'sustain',
+      'green',
+      'environment',
+      'co2',
+      'eco',
+      'climate',
       'footprint',
     ])) {
       return 'Your sustainability score is 86/100 — that is Excellent! You are actively contributing to a cleaner energy grid.\n\n'
@@ -222,8 +249,15 @@ class AiMockRepository implements AiRepository {
 
     // Recommendations / advice questions
     if (_matchesAny(question, [
-      'recommend', 'advice', 'tip', 'suggest', 'should', 'optimize',
-      'improve', 'what to', 'how to',
+      'recommend',
+      'advice',
+      'tip',
+      'suggest',
+      'should',
+      'optimize',
+      'improve',
+      'what to',
+      'how to',
     ])) {
       return 'Here are a few tailored recommendations:\n\n'
           '1. **Shift loads to solar hours** — Run high-consumption appliances (washing machine, water heater) between 10 AM and 3 PM when solar generation is strongest.\n'
@@ -234,7 +268,12 @@ class AiMockRepository implements AiRepository {
 
     // Forecast / prediction questions
     if (_matchesAny(question, [
-      'forecast', 'predict', 'future', 'weather', 'expect', 'upcoming',
+      'forecast',
+      'predict',
+      'future',
+      'weather',
+      'expect',
+      'upcoming',
       'next',
     ])) {
       return 'Based on recent generation patterns and historical data, here is the outlook for your system:\n\n'
@@ -246,8 +285,14 @@ class AiMockRepository implements AiRepository {
 
     // Greetings / casual questions
     if (_matchesAny(question, [
-      'hello', 'hi ', 'hey', 'good morning', 'good evening', 'namaste',
-      '\u0d28\u0d2e\u0d38\u0d4d\u0d15\u0d3e\u0d30', '\u0d39\u0d48',
+      'hello',
+      'hi ',
+      'hey',
+      'good morning',
+      'good evening',
+      'namaste',
+      '\u0d28\u0d2e\u0d38\u0d4d\u0d15\u0d3e\u0d30',
+      '\u0d39\u0d48',
     ])) {
       return 'Hello! I am VoltShare AI, your energy assistant. I can help you with your energy dashboard, marketplace, battery status, wallet, and sustainability tracking.\n\n'
           'Try asking me questions like:\n'
@@ -270,5 +315,81 @@ class AiMockRepository implements AiRepository {
 
   bool _matchesAny(String text, List<String> keywords) {
     return keywords.any((kw) => text.contains(kw));
+  }
+}
+
+class GeminiHybridAiRepository implements AiRepository {
+  const GeminiHybridAiRepository(
+    this._apiRepo, [
+    this._mockRepo = const AiMockRepository(),
+  ]);
+
+  final AiApiRepository _apiRepo;
+  final AiMockRepository _mockRepo;
+
+  @override
+  Future<ForecastResponse> forecast(String metric) async {
+    try {
+      return await _apiRepo
+          .forecast(metric)
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      return _mockRepo.forecast(metric);
+    }
+  }
+
+  @override
+  Future<List<RecommendationItem>> recommendations() async {
+    try {
+      return await _apiRepo.recommendations().timeout(
+        const Duration(seconds: 4),
+      );
+    } catch (_) {
+      return _mockRepo.recommendations();
+    }
+  }
+
+  @override
+  Future<void> dismissRecommendation(String id) async {
+    try {
+      await _apiRepo
+          .dismissRecommendation(id)
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      await _mockRepo.dismissRecommendation(id);
+    }
+  }
+
+  @override
+  Future<SustainabilityScoreModel> sustainabilityScore() async {
+    try {
+      return await _apiRepo.sustainabilityScore().timeout(
+        const Duration(seconds: 4),
+      );
+    } catch (_) {
+      return _mockRepo.sustainabilityScore();
+    }
+  }
+
+  @override
+  Future<PricingSuggestionModel> pricingSuggestion({
+    double quantityKwh = 1,
+  }) async {
+    try {
+      return await _apiRepo
+          .pricingSuggestion(quantityKwh: quantityKwh)
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      return _mockRepo.pricingSuggestion(quantityKwh: quantityKwh);
+    }
+  }
+
+  @override
+  Future<AssistantResponseModel> chat(String message) async {
+    try {
+      return await _apiRepo.chat(message).timeout(const Duration(seconds: 6));
+    } catch (_) {
+      return _mockRepo.chat(message);
+    }
   }
 }

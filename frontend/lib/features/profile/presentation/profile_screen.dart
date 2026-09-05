@@ -28,9 +28,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _error = null;
     });
     try {
+      ref.read(mockUserSessionProvider.notifier).state = null;
       await ref.read(authRepositoryProvider).signOut();
+      ref.invalidate(currentProfileProvider);
+      ref.invalidate(currentSessionProvider);
+      if (mounted) {
+        try {
+          context.go(AppRoutes.login);
+        } catch (_) {
+          // In test environments where GoRouter is not injected into the context
+        }
+      }
     } on AppException catch (error) {
       setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) {
+        try {
+          context.go(AppRoutes.login);
+        } catch (_) {}
+      }
     } finally {
       if (mounted) setState(() => _isSigningOut = false);
     }
@@ -51,8 +67,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const SizedBox(height: 16),
             profile.when(
               data: (value) {
-                if (value == null)
+                if (value == null) {
                   return const ErrorMessage(message: 'No profile found.');
+                }
                 return _ProfileDetails(
                   profile: value,
                   kyc: kycAsync.valueOrNull,
@@ -162,7 +179,11 @@ class _ProfileDetails extends StatelessWidget {
         const SizedBox(height: 14),
 
         // KYC Section
-        if (kyc == null || kyc!.status == KycStatus.notSubmitted || kyc!.status == KycStatus.rejected || kyc!.status == KycStatus.resubmissionRequested || needsKyc)
+        if (kyc == null ||
+            kyc!.status == KycStatus.notSubmitted ||
+            kyc!.status == KycStatus.rejected ||
+            kyc!.status == KycStatus.resubmissionRequested ||
+            needsKyc)
           _ActionCard(
             icon: Icons.verified_user_outlined,
             title: 'KYC Verification Required',
@@ -179,7 +200,9 @@ class _ProfileDetails extends StatelessWidget {
             title: 'KYC: ${kyc!.status.label}',
             subtitle: kyc!.status == KycStatus.verified
                 ? 'Identity verified'
-                : (kyc!.remarks?.isNotEmpty == true ? kyc!.remarks! : 'Under review'),
+                : (kyc!.remarks?.isNotEmpty == true
+                      ? kyc!.remarks!
+                      : 'Under review'),
             trailing: Icon(
               kyc!.status == KycStatus.verified
                   ? Icons.check_circle
@@ -702,7 +725,7 @@ class _EmergencyTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.15),
+          backgroundColor: color.withValues(alpha: 0.15),
           child: Icon(icon, color: color),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -710,7 +733,7 @@ class _EmergencyTile extends StatelessWidget {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(

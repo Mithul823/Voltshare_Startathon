@@ -15,6 +15,8 @@ _connection = ContextVar("financial_connection", default=None)
 def database_url():
     url = get_settings().financial_database_url
     if not url:
+        if not get_settings().is_production:
+            return "sqlite:///data/financial_records.db"
         raise ApiError(503, ErrorCode.CONFIGURATION_ERROR, "FINANCIAL_DATABASE_URL is required for persistent financial operations.")
     if get_settings().is_production and not url.startswith(("postgresql://", "postgres://")):
         raise ApiError(503, ErrorCode.CONFIGURATION_ERROR, "Production financial storage requires PostgreSQL.")
@@ -30,8 +32,12 @@ def connection():
     url = database_url()
     if url.startswith("sqlite:///"):
         path = url[len("sqlite:///"):]
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(path, timeout=30)
+        db_path = Path(path)
+        if not db_path.is_absolute():
+            backend_root = Path(__file__).resolve().parent.parent.parent
+            db_path = backend_root / path
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), timeout=30)
         conn.execute("CREATE TABLE IF NOT EXISTS financial_records (namespace TEXT NOT NULL, key TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(namespace, key))")
         conn.commit()
         conn.execute("BEGIN IMMEDIATE")

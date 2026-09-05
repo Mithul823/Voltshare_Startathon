@@ -258,7 +258,10 @@ class _DeveloperDebugScreenState extends ConsumerState<DeveloperDebugScreen> {
   }
 
   Future<void> _logout() async {
+    ref.read(mockUserSessionProvider.notifier).state = null;
     await ref.read(authRepositoryProvider).signOut();
+    ref.invalidate(currentProfileProvider);
+    ref.invalidate(currentSessionProvider);
     if (mounted) {
       context.go(AppRoutes.login);
     }
