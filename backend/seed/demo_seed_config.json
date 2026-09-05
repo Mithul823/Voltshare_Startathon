@@ -1,0 +1,54 @@
+{
+  "version": "1.0.0",
+  "marker": "voltshare_demo_v1",
+  "email_domain": "@voltshare-demo.local",
+  "fixed_seed": 42,
+  "energy_readings_days": 30,
+  "energy_readings_interval_hours": 1,
+  "listing_count": 20,
+  "purchase_count": 8,
+  "default_passwords": {
+    "admin": "VoltShareDemo2026!",
+    "consumer": "VoltShareDemo2026!",
+    "producer": "VoltShareDemo2026!"
+  },
+  "password_env_vars": {
+    "admin": "DEMO_ADMIN_PASSWORD",
+    "consumer": "DEMO_CONSUMER_PASSWORD",
+    "producer": "DEMO_PRODUCER_PASSWORD"
+  },
+  "initial_balances_paise": {
+    "admin": 500000,
+    "consumer1": 125000,
+    "consumer2": 80000,
+    "producer1": 250000,
+    "producer2": 180000
+  },
+  "platform_fee_percent": 5,
+  "batch_size": 250,
+  "listing_status_distribution": {
+    "active": 0.8,
+    "sold": 0.1,
+    "cancelled": 0.1
+  },
+  "dispute_count": 3,
+  "security_events_per_user": 3,
+  "login_events_per_user": 5,
+  "ai_insight_types": [
+    "energy_optimization",
+    "generation_recommendation",
+    "pricing_insight",
+    "sustainability_insight",
+    "anomaly_insight"
+  ],
+  "sales_tax_percent": 5,
+  "demo_locations": [
+    {"city": "Kochi", "district": "Ernakulam"},
+    {"city": "Thodupuzha", "district": "Idukki"},
+    {"city": "Thiruvananthapuram", "district": "Thiruvananthapuram"},
+    {"city": "Kozhikode", "district": "Kozhikode"},
+    {"city": "Thrissur", "district": "Thrissur"},
+    {"city": "Alappuzha", "district": "Alappuzha"}
+  ],
+  "energy_sources": ["solar", "wind", "hydro", "biomass", "community_solar"]
+}
