@@ -7,6 +7,7 @@ import '../../../core/network/api_exception.dart';
 import '../data/meter_repository.dart';
 import '../domain/meter_metrics.dart';
 
+/// Provider for Producer smart meter telemetry (/meter-metrics/producer)
 final producerMeterProvider =
     StateNotifierProvider.autoDispose<
       ProducerMeterNotifier,
@@ -16,8 +17,19 @@ final producerMeterProvider =
       return ProducerMeterNotifier(repository: repository);
     });
 
-class ProducerMeterNotifier extends StateNotifier<AsyncValue<MeterMetrics>> {
-  ProducerMeterNotifier({
+/// Provider for Consumer smart meter telemetry (/meter-metrics/consumer)
+final consumerMeterProvider =
+    StateNotifierProvider.autoDispose<
+      ConsumerMeterNotifier,
+      AsyncValue<MeterMetrics>
+    >((ref) {
+      final repository = ref.watch(meterRepositoryProvider);
+      return ConsumerMeterNotifier(repository: repository);
+    });
+
+abstract class BaseMeterNotifier
+    extends StateNotifier<AsyncValue<MeterMetrics>> {
+  BaseMeterNotifier({
     required MeterRepository repository,
     Duration pollingInterval = const Duration(seconds: 3),
     bool autoStartPolling = true,
@@ -42,11 +54,10 @@ class ProducerMeterNotifier extends StateNotifier<AsyncValue<MeterMetrics>> {
   bool _isFetching = false;
   MeterMetrics? _lastKnownReading;
 
-  void _startPolling() {
-    // Initial fetch immediately
-    _fetchMetrics();
+  Future<MeterMetrics> fetchFromRepository(MeterRepository repository);
 
-    // Periodic background polling without overlapping requests
+  void _startPolling() {
+    _fetchMetrics();
     _pollingTimer = Timer.periodic(_pollingInterval, (_) {
       _fetchMetrics();
     });
@@ -61,12 +72,12 @@ class ProducerMeterNotifier extends StateNotifier<AsyncValue<MeterMetrics>> {
     _isFetching = true;
 
     try {
-      final metrics = await _repository.getProducerMetrics();
+      final metrics = await fetchFromRepository(_repository);
       if (!mounted) return;
 
       _lastKnownReading = metrics.copyWith(status: MeterConnectionStatus.live);
       state = AsyncValue.data(_lastKnownReading!);
-    } catch (error, stackTrace) {
+    } catch (error) {
       if (!mounted) return;
 
       final errorMessage = error is ApiException
@@ -75,18 +86,16 @@ class ProducerMeterNotifier extends StateNotifier<AsyncValue<MeterMetrics>> {
 
       if (kDebugMode) {
         // ignore: avoid_print
-        print('[ProducerMeterNotifier] Meter fetch error: $errorMessage');
+        print('[$runtimeType] Meter fetch error: $errorMessage');
       }
 
       if (_lastKnownReading != null) {
-        // Maintain last known reading with STALE connection status
         final staleData = _lastKnownReading!.copyWith(
           status: MeterConnectionStatus.stale,
           errorMessage: errorMessage,
         );
         state = AsyncValue.data(staleData);
       } else {
-        // No prior valid reading exists: transition to OFFLINE state
         state = AsyncValue.data(
           MeterMetrics(
             timestamp: DateTime.now(),
@@ -105,5 +114,31 @@ class ProducerMeterNotifier extends StateNotifier<AsyncValue<MeterMetrics>> {
     _pollingTimer?.cancel();
     _pollingTimer = null;
     super.dispose();
+  }
+}
+
+class ProducerMeterNotifier extends BaseMeterNotifier {
+  ProducerMeterNotifier({
+    required super.repository,
+    super.pollingInterval,
+    super.autoStartPolling,
+  });
+
+  @override
+  Future<MeterMetrics> fetchFromRepository(MeterRepository repository) {
+    return repository.getProducerMetrics();
+  }
+}
+
+class ConsumerMeterNotifier extends BaseMeterNotifier {
+  ConsumerMeterNotifier({
+    required super.repository,
+    super.pollingInterval,
+    super.autoStartPolling,
+  });
+
+  @override
+  Future<MeterMetrics> fetchFromRepository(MeterRepository repository) {
+    return repository.getConsumerMetrics();
   }
 }

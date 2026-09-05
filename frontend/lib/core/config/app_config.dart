@@ -15,6 +15,8 @@ class AppConfig {
     this.smartMeterBaseUrl =
         'https://startathon-voltshare-smartmeter.onrender.com',
     this.smartMeterProducerPath = '/meter-metrics/producer',
+    this.smartMeterConsumerPath = '/meter-metrics/consumer',
+    this.smartMeterConsumerPurchasePath = '/consumer-purchase',
     this.meterProvider = 'external_api',
   });
 
@@ -42,6 +44,14 @@ class AppConfig {
         'SMART_METER_PRODUCER_PATH',
         defaultValue: '/meter-metrics/producer',
       ),
+      smartMeterConsumerPath: String.fromEnvironment(
+        'SMART_METER_CONSUMER_PATH',
+        defaultValue: '/meter-metrics/consumer',
+      ),
+      smartMeterConsumerPurchasePath: String.fromEnvironment(
+        'SMART_METER_CONSUMER_PURCHASE_PATH',
+        defaultValue: '/consumer-purchase',
+      ),
       meterProvider: String.fromEnvironment(
         'METER_PROVIDER',
         defaultValue: 'external_api',
@@ -57,6 +67,8 @@ class AppConfig {
   final String aiMode;
   final String smartMeterBaseUrl;
   final String smartMeterProducerPath;
+  final String smartMeterConsumerPath;
+  final String smartMeterConsumerPurchasePath;
   final String meterProvider;
 
   bool get isSupabaseConfigured {

@@ -47,7 +47,8 @@ class AuthError extends DashboardError {
 class AccessDeniedError extends DashboardError {
   const AccessDeniedError();
   @override
-  String get userMessage => 'You do not have permission to view this dashboard.';
+  String get userMessage =>
+      'You do not have permission to view this dashboard.';
 }
 
 class NetworkError extends DashboardError {
@@ -139,9 +140,11 @@ class DashboardNotifier extends StateNotifier<AsyncValue<DashboardSnapshot?>> {
     }
     try {
       final snapshot = await reader();
+      if (!mounted) return;
       state = AsyncValue.data(snapshot);
       _configureTimer(snapshot);
     } catch (error, stackTrace) {
+      if (!mounted) return;
       state = AsyncValue.error(_mapError(error), stackTrace);
       _timer?.cancel();
     }

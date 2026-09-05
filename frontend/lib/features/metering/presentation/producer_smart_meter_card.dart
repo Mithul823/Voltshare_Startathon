@@ -4,38 +4,88 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/meter_metrics.dart';
 import '../providers/meter_provider.dart';
 
+/// Smart meter telemetry card for the Producer role.
+/// Fetches live data from /meter-metrics/producer
 class ProducerSmartMeterCard extends ConsumerWidget {
   const ProducerSmartMeterCard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final meterState = ref.watch(producerMeterProvider);
+
+    return _SmartMeterCardView(
+      meterState: meterState,
+      title: 'PRODUCER SMART METER',
+      subtitle: 'IoT Telemetry • /meter-metrics/producer',
+      heroLabel: 'ACTIVE GENERATION POWER',
+      cumulativeEnergyLabel: 'CUMULATIVE ENERGY',
+      onRefresh: () => ref.read(producerMeterProvider.notifier).refresh(),
+    );
+  }
+}
+
+/// Smart meter telemetry card for the Consumer role.
+/// Fetches live data from /meter-metrics/consumer
+class ConsumerSmartMeterCard extends ConsumerWidget {
+  const ConsumerSmartMeterCard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final meterState = ref.watch(consumerMeterProvider);
+
+    return _SmartMeterCardView(
+      meterState: meterState,
+      title: 'CONSUMER SMART METER',
+      subtitle: 'IoT Telemetry • /meter-metrics/consumer',
+      heroLabel: 'ACTIVE POWER DEMAND',
+      cumulativeEnergyLabel: 'CUMULATIVE CONSUMPTION',
+      onRefresh: () => ref.read(consumerMeterProvider.notifier).refresh(),
+    );
+  }
+}
+
+class _SmartMeterCardView extends StatelessWidget {
+  const _SmartMeterCardView({
+    required this.meterState,
+    required this.title,
+    required this.subtitle,
+    required this.heroLabel,
+    required this.cumulativeEnergyLabel,
+    required this.onRefresh,
+  });
+
+  final AsyncValue<MeterMetrics> meterState;
+  final String title;
+  final String subtitle;
+  final String heroLabel;
+  final String cumulativeEnergyLabel;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return meterState.when(
-      data: (metrics) => _buildMeterContent(context, ref, theme, metrics),
-      loading: () => _buildConnectingCard(context, ref, theme),
-      error: (error, _) =>
-          _buildErrorCard(context, ref, theme, error.toString()),
+      data: (metrics) => _buildMeterContent(context, theme, metrics),
+      loading: () => _buildConnectingCard(context, theme),
+      error: (error, _) => _buildErrorCard(context, theme, error.toString()),
     );
   }
 
   Widget _buildMeterContent(
     BuildContext context,
-    WidgetRef ref,
     ThemeData theme,
     MeterMetrics metrics,
   ) {
     if (metrics.status == MeterConnectionStatus.connecting &&
         metrics.power == null) {
-      return _buildConnectingCard(context, ref, theme);
+      return _buildConnectingCard(context, theme);
     }
 
     if (metrics.status == MeterConnectionStatus.offline &&
         metrics.power == null) {
       return _buildErrorCard(
         context,
-        ref,
         theme,
         metrics.errorMessage ?? 'Smart meter data is temporarily unavailable.',
       );
@@ -99,9 +149,9 @@ class ProducerSmartMeterCard extends ConsumerWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'PRODUCER SMART METER',
-                          style: TextStyle(
+                        Text(
+                          title,
+                          style: const TextStyle(
                             color: Color(0xFF80CBC4),
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -109,7 +159,7 @@ class ProducerSmartMeterCard extends ConsumerWidget {
                           ),
                         ),
                         Text(
-                          'IoT Telemetry • /meter-metrics/producer',
+                          subtitle,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 10,
@@ -172,8 +222,7 @@ class ProducerSmartMeterCard extends ConsumerWidget {
                       color: const Color(0xFF80CBC4),
                       visualDensity: VisualDensity.compact,
                       tooltip: 'Refresh smart meter data',
-                      onPressed: () =>
-                          ref.read(producerMeterProvider.notifier).refresh(),
+                      onPressed: onRefresh,
                     ),
                   ],
                 ),
@@ -222,7 +271,7 @@ class ProducerSmartMeterCard extends ConsumerWidget {
               const SizedBox(height: 14),
             ],
 
-            // Hero Metric: Active Generation Power
+            // Hero Metric: Active Power
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -239,9 +288,9 @@ class ProducerSmartMeterCard extends ConsumerWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'ACTIVE GENERATION POWER',
-                        style: TextStyle(
+                      Text(
+                        heroLabel,
+                        style: const TextStyle(
                           color: Color(0xFF4DB6AC),
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -324,7 +373,7 @@ class ProducerSmartMeterCard extends ConsumerWidget {
               children: [
                 Expanded(
                   child: _buildTelemetryTile(
-                    label: 'CUMULATIVE ENERGY',
+                    label: cumulativeEnergyLabel,
                     value: metrics.energy != null
                         ? metrics.energy!.toStringAsFixed(2)
                         : '--',
@@ -481,11 +530,7 @@ class ProducerSmartMeterCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildConnectingCard(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeData theme,
-  ) {
+  Widget _buildConnectingCard(BuildContext context, ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -502,13 +547,13 @@ class ProducerSmartMeterCard extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.bolt, color: Color(0xFFFFB300), size: 20),
-                  SizedBox(width: 8),
+                  const Icon(Icons.bolt, color: Color(0xFFFFB300), size: 20),
+                  const SizedBox(width: 8),
                   Text(
-                    'PRODUCER SMART METER',
-                    style: TextStyle(
+                    title,
+                    style: const TextStyle(
                       color: Color(0xFFFFD54F),
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -561,7 +606,6 @@ class ProducerSmartMeterCard extends ConsumerWidget {
 
   Widget _buildErrorCard(
     BuildContext context,
-    WidgetRef ref,
     ThemeData theme,
     String errorMessage,
   ) {
@@ -581,13 +625,13 @@ class ProducerSmartMeterCard extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.bolt, color: Color(0xFFFF5252), size: 20),
-                  SizedBox(width: 8),
+                  const Icon(Icons.bolt, color: Color(0xFFFF5252), size: 20),
+                  const SizedBox(width: 8),
                   Text(
-                    'PRODUCER SMART METER',
-                    style: TextStyle(
+                    title,
+                    style: const TextStyle(
                       color: Color(0xFFFF8A80),
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -650,8 +694,7 @@ class ProducerSmartMeterCard extends ConsumerWidget {
                   'Retry',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
-                onPressed: () =>
-                    ref.read(producerMeterProvider.notifier).refresh(),
+                onPressed: onRefresh,
               ),
             ],
           ),

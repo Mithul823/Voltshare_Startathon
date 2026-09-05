@@ -67,6 +67,7 @@ class RealtimeController extends StateNotifier<AsyncValue<RealtimeEvent?>> {
       'wallet',
       'notifications',
     ]);
+    if (!mounted) return;
     if (!connected) {
       state = const AsyncValue.data(null);
     }

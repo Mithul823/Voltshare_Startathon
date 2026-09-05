@@ -10,6 +10,8 @@ import '../../metering/presentation/producer_smart_meter_card.dart';
 import '../../notifications/widgets/notification_bell.dart';
 import '../../purchases/data/purchases_repository.dart';
 import '../../realtime/providers/realtime_provider.dart';
+import '../../sales/data/sales_provider.dart';
+import '../../sales/data/sales_repository.dart';
 import '../data/dashboard_mock_repository.dart';
 import '../domain/dashboard_snapshot.dart' hide BatteryStatus;
 import '../widgets/battery_status.dart';
@@ -92,63 +94,74 @@ class ConsumerDashboard extends ConsumerWidget {
         ? '${recentTotalKwh.toStringAsFixed(1)} kWh'
         : '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh';
 
-    return _RoleLayout(
-      lead: _EnergyPanel(
-        value: '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
-        label: 'Consumed today',
-        progress: snapshot.consumptionTodayKwh / 28,
-        battery: snapshot,
-        actions: [
-          _Action(
-            'Buy Energy',
-            Icons.shopping_bag_outlined,
-            () => context.go(AppRoutes.marketplace),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ConsumerSmartMeterCard(),
+        const SizedBox(height: 18),
+        _RoleLayout(
+          lead: _EnergyPanel(
+            value: '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
+            label: 'Consumed today',
+            progress: snapshot.consumptionTodayKwh / 28,
+            battery: snapshot,
+            actions: [
+              _Action(
+                'Buy Energy',
+                Icons.shopping_bag_outlined,
+                () => context.go(AppRoutes.marketplace),
+              ),
+              _Action(
+                'View Purchases',
+                Icons.receipt_long_outlined,
+                () => context.go(AppRoutes.purchases),
+              ),
+              _Action(
+                'Add Funds',
+                Icons.add_card_outlined,
+                () => context.go(AppRoutes.addFunds),
+              ),
+            ],
           ),
-          _Action(
-            'View Purchases',
-            Icons.receipt_long_outlined,
-            () => context.go(AppRoutes.purchases),
-          ),
-          _Action(
-            'Add Funds',
-            Icons.add_card_outlined,
-            () => context.go(AppRoutes.addFunds),
-          ),
-        ],
-      ),
-      metrics: [
-        _Metric(
-          "Today's consumption",
-          '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
-          Icons.home_outlined,
-        ),
-        _Metric(
-          "Today's spending",
-          'Rs ${(snapshot.consumptionTodayKwh * 9.4).toStringAsFixed(0)}',
-          Icons.payments_outlined,
-        ),
-        _Metric('Recommended listings', 'Available', Icons.storefront_outlined),
-        _Metric(
-          'Battery',
-          '${snapshot.batteryPercentage}%',
-          Icons.battery_5_bar_outlined,
-        ),
-        _Metric(
-          'Carbon saved',
-          '${snapshot.co2AvoidedKg.toStringAsFixed(1)} kg',
-          Icons.eco_outlined,
-        ),
-        _Metric(
-          'Recent purchases',
-          purchasesLabel,
-          Icons.shopping_cart_outlined,
+          metrics: [
+            _Metric(
+              "Today's consumption",
+              '${snapshot.consumptionTodayKwh.toStringAsFixed(1)} kWh',
+              Icons.home_outlined,
+            ),
+            _Metric(
+              "Today's spending",
+              'Rs ${(snapshot.consumptionTodayKwh * 9.4).toStringAsFixed(0)}',
+              Icons.payments_outlined,
+            ),
+            _Metric(
+              'Recommended listings',
+              'Available',
+              Icons.storefront_outlined,
+            ),
+            _Metric(
+              'Battery',
+              '${snapshot.batteryPercentage}%',
+              Icons.battery_5_bar_outlined,
+            ),
+            _Metric(
+              'Carbon saved',
+              '${snapshot.co2AvoidedKg.toStringAsFixed(1)} kg',
+              Icons.eco_outlined,
+            ),
+            _Metric(
+              'Recent purchases',
+              purchasesLabel,
+              Icons.shopping_cart_outlined,
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-class ProducerDashboard extends StatelessWidget {
+class ProducerDashboard extends ConsumerWidget {
   const ProducerDashboard({
     required this.profile,
     required this.snapshot,
@@ -159,7 +172,13 @@ class ProducerDashboard extends StatelessWidget {
   final DashboardSnapshot snapshot;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final salesState = ref.watch(salesProvider);
+    final summary = switch (salesState) {
+      SalesSuccess(:final data) => data.summary,
+      _ => const ProducerSaleSummary(),
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -218,19 +237,31 @@ class ProducerDashboard extends StatelessWidget {
               Icons.inventory_2_outlined,
             ),
             _Metric(
+              'Total sales',
+              '${summary.totalSales} completed',
+              Icons.receipt_long_outlined,
+            ),
+            _Metric(
+              'Energy sold',
+              '${summary.energySoldKwh.toStringAsFixed(1)} kWh',
+              Icons.electric_bolt_outlined,
+            ),
+            _Metric(
               'Pending settlements',
-              'Rs ${(snapshot.availableToSellKwh * 4.1).toStringAsFixed(0)}',
+              summary.pendingSettlementInr,
               Icons.lock_clock_outlined,
             ),
             _Metric(
               'Today earnings',
-              'Rs ${(snapshot.availableToSellKwh * 8.2).toStringAsFixed(0)}',
+              summary.grossRevenuePaise > 0
+                  ? summary.grossRevenueInr
+                  : 'Rs ${(snapshot.availableToSellKwh * 8.2).toStringAsFixed(0)}',
               Icons.trending_up_outlined,
             ),
             _Metric(
-              'Monthly earnings',
-              'Rs ${(snapshot.availableToSellKwh * 8.2 * 30).toStringAsFixed(0)}',
-              Icons.calendar_month_outlined,
+              'Net earnings',
+              summary.netRevenueInr,
+              Icons.account_balance_wallet_outlined,
             ),
             _Metric(
               'Production efficiency',

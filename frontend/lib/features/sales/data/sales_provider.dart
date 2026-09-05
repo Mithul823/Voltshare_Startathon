@@ -67,8 +67,10 @@ class SalesNotifier extends StateNotifier<SalesState> {
         page: page,
         pageSize: pageSize,
       );
+      if (!mounted) return;
       state = SalesSuccess(data);
     } catch (error) {
+      if (!mounted) return;
       state = SalesError(_mapError(error));
     }
   }

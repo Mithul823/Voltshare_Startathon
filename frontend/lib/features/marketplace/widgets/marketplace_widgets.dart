@@ -66,7 +66,10 @@ class _MarketplaceSearchBarState extends State<MarketplaceSearchBar> {
             ),
             prefixIcon: Padding(
               padding: const EdgeInsets.only(left: 16, right: 8),
-              child: Icon(Icons.search_rounded, color: theme.colorScheme.onSurfaceVariant),
+              child: Icon(
+                Icons.search_rounded,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             suffixIcon: _controller.text.isNotEmpty
                 ? IconButton(
@@ -87,10 +90,16 @@ class _MarketplaceSearchBarState extends State<MarketplaceSearchBar> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+              borderSide: BorderSide(
+                color: theme.colorScheme.primary,
+                width: 2,
+              ),
             ),
             filled: false,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
         ),
       ),
@@ -136,7 +145,10 @@ class MarketplaceFilterChips extends StatelessWidget {
                 icon: const Icon(Icons.close_rounded, size: 16),
                 label: const Text('Clear', style: TextStyle(fontSize: 13)),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
@@ -170,7 +182,9 @@ class _FilterChipStyled extends StatelessWidget {
         style: TextStyle(
           fontSize: 13,
           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          color: selected ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
+          color: selected
+              ? theme.colorScheme.onPrimaryContainer
+              : theme.colorScheme.onSurface,
         ),
       ),
       selected: selected,
@@ -187,9 +201,7 @@ class _FilterChipStyled extends StatelessWidget {
             : theme.colorScheme.outlineVariant,
         width: 1,
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     );
   }
 }
@@ -232,14 +244,33 @@ class MarketplaceSortDropdown extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
             dropdownColor: theme.colorScheme.surface,
-            icon: Icon(Icons.unfold_more_rounded, size: 20, color: theme.colorScheme.onSurfaceVariant),
+            icon: Icon(
+              Icons.unfold_more_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             hint: const Text('Sort by'),
             items: const [
-              DropdownMenuItem(value: MarketplaceSort.priceLow, child: Text('Price: Low to High')),
-              DropdownMenuItem(value: MarketplaceSort.priceHigh, child: Text('Price: High to Low')),
-              DropdownMenuItem(value: MarketplaceSort.distance, child: Text('Nearest')),
-              DropdownMenuItem(value: MarketplaceSort.rating, child: Text('Highest Rated')),
-              DropdownMenuItem(value: MarketplaceSort.energyAvailable, child: Text('Most Energy')),
+              DropdownMenuItem(
+                value: MarketplaceSort.priceLow,
+                child: Text('Price: Low to High'),
+              ),
+              DropdownMenuItem(
+                value: MarketplaceSort.priceHigh,
+                child: Text('Price: High to Low'),
+              ),
+              DropdownMenuItem(
+                value: MarketplaceSort.distance,
+                child: Text('Nearest'),
+              ),
+              DropdownMenuItem(
+                value: MarketplaceSort.rating,
+                child: Text('Highest Rated'),
+              ),
+              DropdownMenuItem(
+                value: MarketplaceSort.energyAvailable,
+                child: Text('Most Energy'),
+              ),
             ],
             onChanged: onChanged,
           ),
@@ -276,7 +307,12 @@ Color _sourceColor(EnergySource source, ThemeData theme) {
 // =========================================================================
 
 class ListingBadge extends StatelessWidget {
-  const ListingBadge({required this.label, required this.icon, this.color, super.key});
+  const ListingBadge({
+    required this.label,
+    required this.icon,
+    this.color,
+    super.key,
+  });
 
   final String label;
   final IconData icon;
@@ -332,7 +368,8 @@ class SellerListingCard extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return Semantics(
-      label: '${listing.sellerName}, ${listing.availableEnergyKwh.toStringAsFixed(1)} kWh at Rs ${listing.pricePerKwh.toStringAsFixed(2)} per kWh',
+      label:
+          '${listing.sellerName}, ${listing.availableEnergyKwh.toStringAsFixed(1)} kWh at Rs ${listing.pricePerKwh.toStringAsFixed(2)} per kWh',
       child: Card(
         margin: EdgeInsets.zero,
         elevation: 0,
@@ -355,7 +392,10 @@ class SellerListingCard extends StatelessWidget {
                     // Avatar
                     CircleAvatar(
                       radius: 22,
-                      backgroundColor: _sourceColor(listing.energySource, theme).withValues(alpha: 0.15),
+                      backgroundColor: _sourceColor(
+                        listing.energySource,
+                        theme,
+                      ).withValues(alpha: 0.15),
                       child: Icon(
                         _sourceIcon(listing.energySource),
                         size: 20,
@@ -378,10 +418,14 @@ class SellerListingCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Row(
                             children: [
-                              Icon(Icons.star_rounded, size: 14, color: Colors.amber.shade600),
+                              Icon(
+                                Icons.star_rounded,
+                                size: 14,
+                                color: Colors.amber.shade600,
+                              ),
                               const SizedBox(width: 2),
                               Text(
-                                '${listing.sellerRating.toStringAsFixed(1)}',
+                                listing.sellerRating.toStringAsFixed(1),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   fontWeight: FontWeight.w600,
                                   color: scheme.onSurfaceVariant,
@@ -389,15 +433,23 @@ class SellerListingCard extends StatelessWidget {
                               ),
                               Text(
                                 ' (${listing.reviewCount})',
-                                style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.outline,
+                                ),
                               ),
                               const SizedBox(width: 6),
-                              Icon(Icons.location_on_outlined, size: 13, color: scheme.outline),
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 13,
+                                color: scheme.outline,
+                              ),
                               const SizedBox(width: 2),
                               Expanded(
                                 child: Text(
                                   listing.location,
-                                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: scheme.outline,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -459,7 +511,11 @@ class SellerListingCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Row(
                             children: [
-                              Icon(Icons.bolt_rounded, size: 16, color: Colors.amber.shade700),
+                              Icon(
+                                Icons.bolt_rounded,
+                                size: 16,
+                                color: Colors.amber.shade700,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 '${listing.availableEnergyKwh.toStringAsFixed(1)} kWh',
@@ -500,7 +556,10 @@ class SellerListingCard extends StatelessWidget {
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 2, left: 2),
+                              padding: const EdgeInsets.only(
+                                bottom: 2,
+                                left: 2,
+                              ),
                               child: Text(
                                 '/kWh',
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -531,7 +590,13 @@ class SellerListingCard extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text('View Listing', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        const Text(
+                          'View Listing',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                         const SizedBox(width: 6),
                         Icon(Icons.arrow_forward_rounded, size: 16),
                       ],
@@ -578,9 +643,13 @@ class QuantitySelector extends StatelessWidget {
           children: [
             IconButton(
               tooltip: 'Decrease',
-              onPressed: quantity <= 0.5 ? null : () => onChanged((quantity - 0.5).clamp(0.5, max)),
+              onPressed: quantity <= 0.5
+                  ? null
+                  : () => onChanged((quantity - 0.5).clamp(0.5, max)),
               icon: const Icon(Icons.remove_circle_outline_rounded),
-              style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
             Expanded(
               child: SliderTheme(
@@ -588,7 +657,9 @@ class QuantitySelector extends StatelessWidget {
                   activeTrackColor: theme.colorScheme.primary,
                   inactiveTrackColor: theme.colorScheme.primaryContainer,
                   thumbColor: theme.colorScheme.primary,
-                  overlayColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  overlayColor: theme.colorScheme.primary.withValues(
+                    alpha: 0.12,
+                  ),
                   trackHeight: 4,
                 ),
                 child: Slider(
@@ -603,16 +674,22 @@ class QuantitySelector extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Increase',
-              onPressed: quantity >= max ? null : () => onChanged((quantity + 0.5).clamp(0.5, max)),
+              onPressed: quantity >= max
+                  ? null
+                  : () => onChanged((quantity + 0.5).clamp(0.5, max)),
               icon: const Icon(Icons.add_circle_outline_rounded),
-              style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
             SizedBox(
               width: 72,
               child: Text(
                 '${quantity.toStringAsFixed(1)} kWh',
                 textAlign: TextAlign.end,
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -645,12 +722,29 @@ class PriceBreakdownCard extends StatelessWidget {
         child: Column(
           children: [
             _priceRow(context, 'Subtotal', quote.subtotal, isTotal: false),
-            _priceRow(context, 'Platform fee', quote.platformFee, isTotal: false),
+            _priceRow(
+              context,
+              'Platform fee',
+              quote.platformFee,
+              isTotal: false,
+            ),
             Divider(height: 20, color: theme.colorScheme.outlineVariant),
             _priceRow(context, 'Total', quote.totalAmount, isTotal: true),
             const SizedBox(height: 4),
-            _priceRow(context, 'Estimated savings', quote.estimatedSavings, isTotal: false, accent: true),
-            _priceRow(context, 'CO2 avoided', quote.co2ImpactKg, isTotal: false, suffix: ' kg'),
+            _priceRow(
+              context,
+              'Estimated savings',
+              quote.estimatedSavings,
+              isTotal: false,
+              accent: true,
+            ),
+            _priceRow(
+              context,
+              'CO2 avoided',
+              quote.co2ImpactKg,
+              isTotal: false,
+              suffix: ' kg',
+            ),
           ],
         ),
       ),
@@ -679,7 +773,9 @@ class PriceBreakdownCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: isTotal ? 15 : 13,
                 fontWeight: isTotal ? FontWeight.w700 : FontWeight.w400,
-                color: accent ? Colors.green.shade700 : theme.colorScheme.onSurface,
+                color: accent
+                    ? Colors.green.shade700
+                    : theme.colorScheme.onSurface,
               ),
             ),
           ),
@@ -688,7 +784,9 @@ class PriceBreakdownCard extends StatelessWidget {
             style: TextStyle(
               fontSize: isTotal ? 15 : 13,
               fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
-              color: accent ? Colors.green.shade700 : theme.colorScheme.onSurface,
+              color: accent
+                  ? Colors.green.shade700
+                  : theme.colorScheme.onSurface,
             ),
           ),
         ],
@@ -727,7 +825,9 @@ class ListingFormSection extends StatelessWidget {
           children: [
             Text(
               title,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 12),
             child,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -7,6 +8,9 @@ import '../../authentication/data/auth_repository.dart';
 import '../../authentication/domain/user_role.dart';
 import '../../dashboard/providers/dashboard_provider.dart';
 import '../../escrow/providers/escrow_provider.dart';
+import '../../metering/data/smart_meter_purchase_service.dart';
+import '../../metering/domain/smart_meter_purchase_result.dart';
+import '../../metering/providers/meter_provider.dart';
 import '../../notifications/providers/notification_provider.dart';
 import '../../purchases/data/purchases_repository.dart';
 import '../../sales/data/sales_provider.dart';
@@ -26,6 +30,11 @@ final marketplaceEventClientProvider = Provider<http.Client>((ref) {
   ref.onDispose(client.close);
   return client;
 });
+
+/// Holds the result of the most recent smart meter purchase API synchronization.
+final latestSmartMeterResultProvider = StateProvider<SmartMeterPurchaseResult?>(
+  (ref) => null,
+);
 
 /// Resolves the current user ID from the authenticated session or profile.
 /// In mock mode, still uses the real Supabase auth if available.
@@ -149,60 +158,104 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
     required String listingId,
     required double quantityKwh,
   }) async {
+    if (state.isLoading) return null;
     state = const AsyncValue.loading();
     try {
-      final isMockMode = _ref.read(appConfigProvider).isMockMode;
+      if (quantityKwh <= 0 || quantityKwh.isNaN || quantityKwh.isInfinite) {
+        throw const MarketplaceException('Quantity must be a positive number.');
+      }
+
+      final appConfig = _ref.read(appConfigProvider);
+      final isMockMode = appConfig.isMockMode;
+      final eventServerUrl = appConfig.eventServerUrl;
+      final eventClient = _ref.read(marketplaceEventClientProvider);
       final permissions = _ref.read(marketplacePermissionsProvider);
       final buyerId = _currentUserId(_ref);
+      final marketplaceRepo = _ref.read(marketplaceRepositoryProvider);
+      final escrowNotifier = _ref.read(escrowControllerProvider.notifier);
+      final walletNotifier = _ref.read(walletControllerProvider.notifier);
+      final smartMeterService = _ref.read(smartMeterPurchaseServiceProvider);
+      final latestSmartMeterResultNotifier = _ref.read(
+        latestSmartMeterResultProvider.notifier,
+      );
+      final consumerMeterNotifier = _ref.read(consumerMeterProvider.notifier);
+      final producerMeterNotifier = _ref.read(producerMeterProvider.notifier);
+      final latestPurchaseNotifier = _ref.read(latestPurchaseProvider.notifier);
+
+      if (kDebugMode) {
+        print(
+          '[PurchaseFlow] Starting purchase: listingId=$listingId, buyerId=$buyerId, '
+          'quantityKwh=$quantityKwh, isMockMode=$isMockMode',
+        );
+      }
 
       final store = MockBackendStore();
       final countBefore = store.purchases.length;
 
-      // Call backend purchase endpoint - handles escrow, wallet debit, ledger atomically
-      final purchase = await _ref
-          .read(marketplaceRepositoryProvider)
-          .purchase(
-            listingId: listingId,
-            buyerId: buyerId,
-            quantityKwh: quantityKwh,
-            canBuy: permissions.canBuy,
-          );
+      // 1. Call backend purchase endpoint - handles escrow, wallet debit, ledger atomically
+      final purchase = await marketplaceRepo.purchase(
+        listingId: listingId,
+        buyerId: buyerId,
+        quantityKwh: quantityKwh,
+        canBuy: permissions.canBuy,
+      );
 
       final countAfter = store.purchases.length;
       final consumerFilteredCount = store.getPurchasesByBuyer(buyerId).length;
 
-      // Development logging for full trace verification
-      // ignore: avoid_print
-      print(
-        '[PurchaseFlow] Success: purchaseId=${purchase.id}, listingId=$listingId, '
-        'producerId=${purchase.sellerId}, consumerId=$buyerId, '
-        'countBefore=$countBefore, countAfter=$countAfter, '
-        'consumerFilteredCount=$consumerFilteredCount',
-      );
+      if (kDebugMode) {
+        print(
+          '[PurchaseFlow] Business purchase complete: purchaseId=${purchase.id}, listingId=$listingId, '
+          'producerId=${purchase.sellerId}, consumerId=$buyerId, '
+          'countBefore=$countBefore, countAfter=$countAfter, '
+          'consumerFilteredCount=$consumerFilteredCount',
+        );
+      }
 
       if (isMockMode) {
         // In mock mode, create escrow and record wallet transaction locally
-        final listing = await _ref
-            .read(marketplaceRepositoryProvider)
-            .listingById(listingId);
-        final escrow = await _ref
-            .read(escrowControllerProvider.notifier)
-            .createForPurchase(purchase: purchase, listing: listing);
-        await _ref
-            .read(walletControllerProvider.notifier)
-            .recordPurchase(
-              purchase: purchase,
-              listing: listing,
-              escrowId: escrow.id,
-            );
+        final listing = await marketplaceRepo.listingById(listingId);
+        final escrow = await escrowNotifier.createForPurchase(
+          purchase: purchase,
+          listing: listing,
+        );
+        await walletNotifier.recordPurchase(
+          purchase: purchase,
+          listing: listing,
+          escrowId: escrow.id,
+        );
       } else {
         // In live mode, the backend already created escrow and debited wallet.
         // Just refresh providers to reflect the new state.
-        unawaited(_ref.read(walletControllerProvider.notifier).refresh());
-        unawaited(_ref.read(escrowControllerProvider.notifier).refresh());
+        unawaited(walletNotifier.refresh());
+        unawaited(escrowNotifier.refresh());
       }
 
-      _ref.read(latestPurchaseProvider.notifier).state = purchase;
+      // 2. Transmit Smart Meter Purchase Signal to live hardware/cloud endpoint
+      if (kDebugMode) {
+        print(
+          '[PurchaseFlow] Transmitting smart-meter purchase signal for ${purchase.quantityKwh} kWh...',
+        );
+      }
+      final smartMeterResult = await smartMeterService.sendConsumerPurchase(
+        purchase.quantityKwh,
+      );
+
+      latestSmartMeterResultNotifier.state = smartMeterResult;
+
+      if (kDebugMode) {
+        print(
+          '[PurchaseFlow] Smart-meter result: status=${smartMeterResult.status.name}, '
+          'message=${smartMeterResult.message ?? smartMeterResult.errorMessage}',
+        );
+      }
+
+      // 3. Immediately refresh Consumer & Producer Smart Meters
+      unawaited(consumerMeterNotifier.refresh());
+      unawaited(producerMeterNotifier.refresh());
+
+      // 4. Invalidate related business providers
+      latestPurchaseNotifier.state = purchase;
       _ref.invalidate(marketplaceListingsProvider);
       _ref.invalidate(myListingsProvider);
       _ref.invalidate(purchasesListProvider);
@@ -211,13 +264,22 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
       _ref.invalidate(dashboardProvider);
       _ref.invalidate(notificationsProvider);
       _ref.invalidate(unreadNotificationsProvider);
+
       if (mounted) {
         state = AsyncValue.data(purchase);
       }
-      _sendSpeechHomeRight(purchase.unitPrice);
-      _sendSellEvent(purchase.unitPrice, purchase.quantityKwh);
+      _sendSpeechHomeRight(purchase.unitPrice, eventServerUrl, eventClient);
+      _sendSellEvent(
+        purchase.unitPrice,
+        purchase.quantityKwh,
+        eventServerUrl,
+        eventClient,
+      );
       return purchase;
     } catch (error, stackTrace) {
+      if (kDebugMode) {
+        print('[PurchaseFlow] Purchase error: $error\n$stackTrace');
+      }
       if (mounted) {
         state = AsyncValue.error(error, stackTrace);
       }
@@ -226,51 +288,63 @@ class PurchaseController extends StateNotifier<AsyncValue<EnergyPurchase?>> {
   }
 
   /// Sends speech home-right event when a consumer buys at a certain rate.
-  void _sendSpeechHomeRight(double price) {
-    unawaited(_postSpeechHomeRight(price));
+  void _sendSpeechHomeRight(
+    double price,
+    String baseUrl,
+    http.Client eventClient,
+  ) {
+    unawaited(_postSpeechHomeRight(price, baseUrl, eventClient));
   }
 
-  Future<void> _postSpeechHomeRight(double price) async {
-    final baseUrl = _ref.read(appConfigProvider).eventServerUrl;
+  Future<void> _postSpeechHomeRight(
+    double price,
+    String baseUrl,
+    http.Client eventClient,
+  ) async {
     if (baseUrl.isEmpty) return;
     try {
-      await _ref
-          .read(marketplaceEventClientProvider)
-          .post(
-            Uri.parse(
-              '${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/speech/home_right',
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true',
-            },
-            body: '{"price": $price, "message": "Buying for $price"}',
-          );
+      await eventClient.post(
+        Uri.parse(
+          '${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/speech/home_right',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: '{"price": $price, "message": "Buying for $price"}',
+      );
     } catch (_) {
       // Silently ignore send failures.
     }
   }
 
   /// Sends sell event to /api/sell with seller, buyer, and amount info.
-  void _sendSellEvent(double price, double amountKw) {
-    unawaited(_postSellEvent(price, amountKw));
+  void _sendSellEvent(
+    double price,
+    double amountKw,
+    String baseUrl,
+    http.Client eventClient,
+  ) {
+    unawaited(_postSellEvent(price, amountKw, baseUrl, eventClient));
   }
 
-  Future<void> _postSellEvent(double price, double amountKw) async {
-    final baseUrl = _ref.read(appConfigProvider).eventServerUrl;
+  Future<void> _postSellEvent(
+    double price,
+    double amountKw,
+    String baseUrl,
+    http.Client eventClient,
+  ) async {
     if (baseUrl.isEmpty) return;
     try {
-      await _ref
-          .read(marketplaceEventClientProvider)
-          .post(
-            Uri.parse('${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/sell'),
-            headers: {
-              'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true',
-            },
-            body:
-                '{"seller": "home_mid", "buyer": "home_right", "amountKw": $amountKw}',
-          );
+      await eventClient.post(
+        Uri.parse('${baseUrl.replaceFirst(RegExp(r"/+$"), "")}/api/sell'),
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body:
+            '{"seller": "home_mid", "buyer": "home_right", "amountKw": $amountKw}',
+      );
     } catch (_) {
       // Silently ignore send failures.
     }

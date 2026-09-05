@@ -374,4 +374,92 @@ void main() {
       },
     );
   });
+
+  group('Consumer Smart Meter Tests', () {
+    test(
+      'fetches and parses live consumer meter endpoint successfully',
+      () async {
+        final mockClient = MockClient((request) async {
+          expect(request.url.path, '/meter-metrics/consumer');
+          return http.Response(
+            jsonEncode({
+              'power': 1400.76,
+              'energy': 152.01,
+              'voltage': 242.72,
+              'powerFactor': 0.61,
+              'meter': 'consumer',
+            }),
+            200,
+          );
+        });
+
+        final repository = ExternalMeterRepository(
+          client: mockClient,
+          baseUrl: 'https://startathon-voltshare-smartmeter.onrender.com',
+          consumerPath: '/meter-metrics/consumer',
+        );
+
+        final metrics = await repository.getConsumerMetrics();
+
+        expect(metrics.power, 1400.76);
+        expect(metrics.energy, 152.01);
+        expect(metrics.voltage, 242.72);
+        expect(metrics.powerFactor, 0.61);
+        expect(metrics.status, MeterConnectionStatus.live);
+        expect(metrics.meterType, 'consumer');
+      },
+    );
+
+    testWidgets('ConsumerSmartMeterCard renders live consumer telemetry', (
+      tester,
+    ) async {
+      final container = ProviderContainer(
+        overrides: [
+          consumerMeterProvider.overrideWith((ref) {
+            final notifier = ConsumerMeterNotifier(
+              repository: MockMeterRepository(
+                simulatedPower: 1400.76,
+                simulatedEnergy: 152.01,
+                simulatedVoltage: 242.72,
+                simulatedPf: 0.61,
+              ),
+              autoStartPolling: false,
+            );
+            notifier.state = AsyncValue.data(
+              MeterMetrics(
+                power: 1400.76,
+                energy: 152.01,
+                voltage: 242.72,
+                powerFactor: 0.61,
+                current: 9.46,
+                timestamp: DateTime(2026, 9, 5, 22, 0, 0),
+                status: MeterConnectionStatus.live,
+              ),
+            );
+            return notifier;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(body: ConsumerSmartMeterCard()),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      expect(find.text('CONSUMER SMART METER'), findsOneWidget);
+      expect(find.text('ACTIVE POWER DEMAND'), findsOneWidget);
+      expect(find.text('LIVE'), findsOneWidget);
+      expect(find.text('1400.8'), findsOneWidget);
+      expect(find.text('152.01'), findsOneWidget);
+      expect(find.text('242.7'), findsOneWidget);
+      expect(find.text('0.61'), findsOneWidget);
+    });
+  });
 }

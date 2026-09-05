@@ -62,7 +62,7 @@ class PurchaseConfirmationScreen extends ConsumerWidget {
                 const SizedBox(height: 20),
                 PrimaryActionButton(
                   label: purchaseState.isLoading
-                      ? 'Confirming...'
+                      ? 'Processing energy purchase...'
                       : 'Confirm simulated purchase',
                   icon: Icons.check_circle_outline,
                   onPressed: purchaseState.isLoading
